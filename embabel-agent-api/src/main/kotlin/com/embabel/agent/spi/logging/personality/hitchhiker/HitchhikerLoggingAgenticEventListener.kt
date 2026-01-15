@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -160,7 +160,7 @@ The standard repository for all knowledge and wisdom in the universe
         "[${e.processId}] ${highlight("DISASTER AREA")}: (${e.request.action?.shortName()}) tool ${e.request.tool} failed $throwable in ${e.runningTime.toMillis()}ms with payload ${e.request.toolInput}"
 
     override fun getLlmRequestEventMessage(e: LlmRequestEvent<*>): String =
-        "[${e.processId}] 🧠 DEEP THOUGHT: calculating LLM ${e.llm.name} to transform ${e.interaction.id.value} from ${e.outputClass.simpleName} -> ${e.interaction.llm} using ${e.interaction.toolCallbacks.joinToString { it.toolDefinition.name() }}"
+        "[${e.processId}] 🧠 DEEP THOUGHT: calculating LLM ${e.llmMetadata.name} to transform ${e.interaction.id.value} from ${e.outputClass.simpleName} -> ${e.interaction.llm} using ${e.interaction.tools.joinToString { it.definition.name }}"
 
     override fun getLlmResponseEventMessage(e: LlmResponseEvent<*>): String =
         """

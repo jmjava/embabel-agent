@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  */
 package com.embabel.agent.rag.service
 
+import com.embabel.agent.rag.ingestion.ChunkTransformer
 import com.embabel.agent.rag.ingestion.ContentChunker
 import com.embabel.common.ai.model.EmbeddingService
 
@@ -32,6 +33,12 @@ interface SearchOperationsBuilder<T : SearchOperations, THIS : SearchOperationsB
     fun withEmbeddingService(embeddingService: EmbeddingService): THIS
 
     /**
+     * Set a transformer to apply to chunks before ingestion.
+     * [com.embabel.agent.rag.ingestion.transform.AddTitlesChunkTransformer] is a good default
+     */
+    fun withChunkTransformer(chunkTransformer: ChunkTransformer): THIS
+
+    /**
      * Build the SearchOperations instance.
      * Return an instance which is ready to use.
      */
@@ -46,4 +53,6 @@ interface IngestingSearchOperationsBuilder<T : CoreSearchOperations, THIS : Inge
     SearchOperationsBuilder<T, THIS> {
 
     fun withChunkerConfig(chunkerConfig: ContentChunker.Config): THIS
+
+    fun withContentChunker(contentChunker: ContentChunker): THIS
 }

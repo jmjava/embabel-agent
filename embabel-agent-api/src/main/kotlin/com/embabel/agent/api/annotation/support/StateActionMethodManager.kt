@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,13 +15,11 @@
  */
 package com.embabel.agent.api.annotation.support
 
-import com.embabel.agent.api.annotation.AchievesGoal
 import com.embabel.agent.api.annotation.Action
-import com.embabel.agent.api.annotation.State
+import com.embabel.agent.api.common.OperationContext
 import com.embabel.agent.api.common.TransformationActionContext
 import com.embabel.agent.api.common.support.MultiTransformationAction
 import com.embabel.agent.core.IoBinding
-import com.embabel.agent.core.ToolGroupRequirement
 import org.slf4j.LoggerFactory
 import org.springframework.core.KotlinDetector
 import org.springframework.util.ReflectionUtils
@@ -48,11 +46,9 @@ internal class StateActionMethodManager(
     fun createAction(
         method: Method,
         stateClass: Class<*>,
-        agentInstance: Any,
     ): CoreAction {
         requireNonAmbiguousParameters(method)
         val actionAnnotation = method.getAnnotation(Action::class.java)
-        val achievesGoalAnnotation = method.getAnnotation(AchievesGoal::class.java)
         val inputClasses = method.parameters.map { it.type }
         val inputs = resolveInputBindings(method)
         // Add the state class itself as an input
@@ -62,41 +58,24 @@ internal class StateActionMethodManager(
         )
         val allInputs = inputs + stateInput
         require(method.returnType != null) { "Action method ${method.name} must have a return type" }
-        val clearBlackboard = method.returnType.isAnnotationPresent(State::class.java) ||
-                actionAnnotation.clearBlackboard
-
-        // Check for @Trigger parameter and create precondition
-        val triggerType = findTriggerType(method)
-        val triggerPreconditions = if (triggerType != null) {
-            listOf(triggerPrecondition(triggerType))
-        } else {
-            emptyList()
-        }
 
         return MultiTransformationAction(
             name = "${stateClass.simpleName}.${method.name}",
             description = actionAnnotation.description.ifBlank { method.name },
             cost = { actionAnnotation.cost },
             inputs = allInputs.toSet(),
-            // State actions that transition between states use canRerun=true because state
-            // transitions clear the blackboard, which resets type-based preconditions.
-            // This avoids hasRun blocking re-entry into states during loops.
-            // However, @AchievesGoal actions are terminal and should NOT be rerunnable
-            // to prevent infinite loops with Utility planner.
-            canRerun = achievesGoalAnnotation == null,
-            clearBlackboard = clearBlackboard,
-            pre = actionAnnotation.pre.toList() + triggerPreconditions,
+            canRerun = actionAnnotation.canRerun,
+            clearBlackboard = computeClearBlackboard(method, actionAnnotation),
+            pre = actionAnnotation.pre.toList() + computeTriggerPreconditions(method),
             post = actionAnnotation.post.toList(),
             inputClasses = inputClasses + stateClass,
             outputClass = method.returnType,
             outputVarName = actionAnnotation.outputBinding,
-            toolGroups = (actionAnnotation.toolGroupRequirements.map { ToolGroupRequirement(it.role) } +
-                    actionAnnotation.toolGroups.map { ToolGroupRequirement(it) }).toSet(),
+            toolGroups = computeToolGroups(actionAnnotation),
         ) { context ->
             invokeStateActionMethod(
                 method = method,
                 stateClass = stateClass,
-                agentInstance = agentInstance,
                 actionContext = context,
             )
         }
@@ -118,28 +97,58 @@ internal class StateActionMethodManager(
         return result
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun <O> invokeStateActionMethod(
-        method: Method,
+    private fun resolveStateInstance(
+        context: OperationContext,
         stateClass: Class<*>,
-        agentInstance: Any,
-        actionContext: TransformationActionContext<List<Any>, O>,
-    ): O {
-        logger.debug("Invoking state action method {}.{}", stateClass.simpleName, method.name)
-        // First, get the state instance from the blackboard
-        val stateInstance = actionContext.processContext.agentProcess.getValue(
+    ): Any {
+        return context.processContext.agentProcess.getValue(
             variable = IoBinding.DEFAULT_BINDING,
             type = stateClass.name,
         ) ?: throw IllegalStateException(
             "State instance of type ${stateClass.name} not found in blackboard"
         )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <O> invokeStateActionMethod(
+        method: Method,
+        stateClass: Class<*>,
+        actionContext: TransformationActionContext<List<Any>, O>,
+    ): O {
+        logger.debug("Invoking state action method {}.{}", stateClass.simpleName, method.name)
+        // First, get the state instance from the blackboard
+
+        val stateInstance = resolveStateInstance(
+            context = actionContext,
+            stateClass = stateClass,
+        )
+
         // TODO Arjen to review reflection usage
-        val result = if (KotlinDetector.isKotlinReflectPresent()) {
-            val kFunction = method.kotlinFunction
-            if (kFunction != null) invokeStateActionMethodKotlinReflect(method, kFunction, stateInstance, actionContext)
-            else invokeStateActionMethodJavaReflect(method, stateInstance, actionContext)
+
+        // Re-lookup the method from the actual instance's class to handle classloader differences
+        // (e.g., when using Spring DevTools hot reload, the class may have been reloaded)
+        val actualMethod = if (stateInstance.javaClass == stateClass) {
+            method
         } else {
-            invokeStateActionMethodJavaReflect(method, stateInstance, actionContext)
+            logger.debug(
+                "State class mismatch: expected {} but got {}. Re-looking up method.",
+                stateClass.name,
+                stateInstance.javaClass.name,
+            )
+            stateInstance.javaClass.getMethod(method.name, *method.parameterTypes)
+        }
+
+        val result = if (KotlinDetector.isKotlinReflectPresent()) {
+            val kFunction = actualMethod.kotlinFunction
+            if (kFunction != null) invokeStateActionMethodKotlinReflect(
+                actualMethod,
+                kFunction,
+                stateInstance,
+                actionContext
+            )
+            else invokeStateActionMethodJavaReflect(actualMethod, stateInstance, actionContext)
+        } else {
+            invokeStateActionMethodJavaReflect(actualMethod, stateInstance, actionContext)
         }
         logger.debug(
             "Result of invoking state action method {}.{} was {}",

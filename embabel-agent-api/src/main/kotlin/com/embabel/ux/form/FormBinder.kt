@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -225,13 +225,8 @@ internal open class JavaFormBinder<T : Any>(
                 when {
                     targetType.isAssignableFrom(List::class.java) -> controlValue.values
                     targetType.isArray -> {
-                        val componentType = targetType.componentType
-                        when (componentType) {
-                            String::class.java -> controlValue.values.toTypedArray()
-                            else -> controlValue.values.toTypedArray()
-                        }
+                        controlValue.values.toTypedArray()
                     }
-
                     else -> controlValue.values
                 }
             }

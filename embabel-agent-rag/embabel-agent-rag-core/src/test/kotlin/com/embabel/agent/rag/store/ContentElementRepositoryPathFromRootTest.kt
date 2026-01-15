@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ package com.embabel.agent.rag.store
 
 import com.embabel.agent.rag.model.Chunk
 import com.embabel.agent.rag.model.ContentElement
-import com.embabel.agent.rag.model.HierarchicalContentElement
 import com.embabel.agent.rag.model.LeafSection
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
@@ -46,7 +45,13 @@ class ContentElementRepositoryPathFromRootTest {
             return element
         }
 
-        override fun count(): Int = elements.size
+        override fun info(): ContentElementRepositoryInfo = object : ContentElementRepositoryInfo {
+            override val chunkCount: Int = elements.values.count { it is Chunk }
+            override val documentCount: Int = 0
+            override val contentElementCount: Int = elements.size
+            override val hasEmbeddings: Boolean = false
+            override val isPersistent: Boolean = false
+        }
 
         override fun findChunksForEntity(entityId: String): List<Chunk> =
             elements.values.filterIsInstance<Chunk>()

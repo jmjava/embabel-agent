@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package com.embabel.agent.config.models.docker
 import com.embabel.agent.api.models.DockerLocalModels.Companion.PROVIDER
 import com.embabel.agent.openai.OpenAiChatOptionsConverter
 import com.embabel.agent.spi.common.RetryProperties
+import com.embabel.agent.spi.support.springai.SpringAiLlmService
 import com.embabel.common.ai.autoconfig.ProviderInitialization
 import com.embabel.common.ai.autoconfig.RegisteredModel
 import com.embabel.common.ai.model.*
@@ -155,7 +156,7 @@ class DockerLocalModelsConfig(
                     add(RegisteredModel(beanName = beanName, modelId = model.id))
                     logger.debug(
                         "Successfully registered Docker {} {} as bean {}",
-                        dockerModel.model.javaClass.simpleName,
+                        dockerModel.model!!.javaClass.simpleName,
                         model.id,
                         beanName,
                     )
@@ -194,14 +195,14 @@ class DockerLocalModelsConfig(
                 .build(),
         )
 
-        return EmbeddingService(
+        return SpringAiEmbeddingService(
             name = model.id,
             model = springEmbeddingModel,
             provider = PROVIDER,
         )
     }
 
-    private fun dockerLlmOf(model: Model): Llm {
+    private fun dockerLlmOf(model: Model): SpringAiLlmService {
         val chatModel = OpenAiChatModel.builder()
             .openAiApi(
                 OpenAiApi.Builder()
@@ -230,9 +231,9 @@ class DockerLocalModelsConfig(
             )
             .retryTemplate(dockerRetryProperties.retryTemplate("docker-${model.id}"))
             .build()
-        return Llm(
+        return SpringAiLlmService(
             name = model.id,
-            model = chatModel,
+            chatModel = chatModel,
             provider = PROVIDER,
             optionsConverter = OpenAiChatOptionsConverter,
             knowledgeCutoffDate = null,

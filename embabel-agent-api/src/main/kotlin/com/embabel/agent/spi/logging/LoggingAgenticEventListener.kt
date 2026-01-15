@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -203,12 +203,21 @@ open class LoggingAgenticEventListener(
     protected open fun getAgentProcessWaitingEventMessage(e: AgentProcessWaitingEvent): String =
         "[${e.processId}] waiting"
 
-    protected open fun getAgentProcessStuckEventMessage(e: AgentProcessStuckEvent): String =
-        """|[${e.processId}] stuck at:
-           |${e.agentProcess.lastWorldState?.infoString(true, 1)}
+    protected open fun getAgentProcessStuckEventMessage(e: AgentProcessStuckEvent): String {
+        if (e.agentProcess.processOptions.plannerType.needsGoals) {
+            return """|[${e.processId}] stuck at:
+           |${
+                e.agentProcess.lastWorldState?.infoString(
+                    verbose = e.agentProcess.processOptions.verbosity.showLongPlans,
+                    indent = 1,
+                )
+            }
            |"""
-            .trimMargin()
-            .indentLines(level = 1, skipIndentFirstLine = true)
+                .trimMargin()
+                .indentLines(level = 1, skipIndentFirstLine = true)
+        }
+        return "[${e.processId}] has no available actions to progress: This is not an error"
+    }
 
     protected open fun getObjectAddedEventMessage(e: ObjectAddedEvent): String =
         "[${e.processId}] object added: ${if (e.agentProcess.processContext.processOptions.verbosity.debug) e.value else e.value::class.java.simpleName}"
@@ -217,13 +226,13 @@ open class LoggingAgenticEventListener(
         "[${e.processId}] object bound ${e.name}:${if (e.agentProcess.processContext.processOptions.verbosity.debug) e.value else e.value::class.java.simpleName}"
 
     protected open fun getLlmRequestEventMessage(e: LlmRequestEvent<*>): String =
-        "[${e.processId}] (${e.interaction.id.value}) using LLM ${e.llm.name}, creating ${e.outputClass.simpleName}: ${e.interaction.llm}"
+        "[${e.processId}] (${e.interaction.id.value}) using LLM ${e.llmMetadata.name}, creating ${e.outputClass.simpleName}: ${e.interaction.llm}"
 
     protected open fun getChatModelCallEventMessage(e: ChatModelCallEvent<*>): String {
-        val promptInfo = "using ${e.llm.name.color(colorPalette.highlight)}\n${
+        val promptInfo = "using ${e.llmMetadata.name.color(colorPalette.highlight)}\n${
             e.springAiPrompt.toInfoString().color(AnsiColor.GREEN)
         }\nprompt id: '${e.interaction.id}'\ntools: [\n${
-            e.interaction.toolCallbacks.joinToString("\n----\n") { it.toolDefinition.name() + ": " + it.toolDefinition.description() }
+            e.interaction.tools.joinToString("\n----\n") { it.definition.name + ": " + it.definition.description }
                 .color(colorPalette.highlight)
         }]"
         return "${e.processId} Spring AI ChatModel call:\n${promptInfo}"

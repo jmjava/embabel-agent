@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,23 @@
 package com.embabel.agent.rag.tools
 
 import com.embabel.agent.api.common.LlmReference
+import com.embabel.agent.rag.filter.EntityFilter
+import com.embabel.agent.rag.filter.PropertyFilter
 import com.embabel.agent.rag.model.Chunk
-import com.embabel.agent.rag.model.ContentElement
-import com.embabel.agent.rag.model.Embeddable
 import com.embabel.agent.rag.model.Retrievable
-import com.embabel.agent.rag.service.*
+import com.embabel.agent.rag.service.FinderOperations
+import com.embabel.agent.rag.service.RegexSearchOperations
+import com.embabel.agent.rag.service.ResultExpander
+import com.embabel.agent.rag.service.RetrievableResultsFormatter
+import com.embabel.agent.rag.service.SearchOperations
+import com.embabel.agent.rag.service.SimpleRetrievableResultsFormatter
+import com.embabel.agent.rag.service.TextSearch
+import com.embabel.agent.rag.service.VectorSearch
 import com.embabel.common.ai.prompt.PromptContributor
-import com.embabel.common.core.types.*
-import com.embabel.common.util.loggerFor
-import org.slf4j.Logger
+import com.embabel.common.core.types.SimilarityResult
+import com.embabel.common.core.types.Timed
+import com.embabel.common.core.types.Timestamped
 import org.slf4j.LoggerFactory
-import org.springframework.ai.tool.annotation.Tool
-import org.springframework.ai.tool.annotation.ToolParam
 import java.time.Duration
 import java.time.Instant
 
@@ -63,8 +68,18 @@ fun interface ResultsListener {
  * or a relational database SQL-driven search.
  * @param goal the goal for acceptance criteria when searching
  * @param formatter the formatter to use for formatting results
+ * @param vectorSearchFor list of retrievable types to enable vector search for.
+ * Defaults to Chunk
+ * @param textSearchFor list of retrievable types to enable text search for.
+ * Defaults to Chunk
  * @param hints list of hints to provide to the LLM
  * @param listener optional listener to receive raw structured results as they are retrieved
+ * @param metadataFilter optional filter applied to [com.embabel.agent.rag.model.Datum.metadata].
+ * Useful for multi-tenant scenarios where searches should be scoped to a specific owner.
+ * The filter is applied transparently - the LLM does not see or control it.
+ * @param entityFilter optional filter applied to object properties
+ * (e.g., [com.embabel.agent.rag.model.NamedEntityData.properties] or typed entity fields).
+ * The filter is applied transparently - the LLM does not see or control it.
  */
 data class ToolishRag @JvmOverloads constructor(
     override val name: String,
@@ -72,8 +87,12 @@ data class ToolishRag @JvmOverloads constructor(
     private val searchOperations: SearchOperations,
     val goal: String = DEFAULT_GOAL,
     val formatter: RetrievableResultsFormatter = SimpleRetrievableResultsFormatter,
+    val vectorSearchFor: List<Class<out Retrievable>> = listOf(Chunk::class.java),
+    val textSearchFor: List<Class<out Retrievable>> = listOf(Chunk::class.java),
     val hints: List<PromptContributor> = listOf(),
     val listener: ResultsListener? = null,
+    val metadataFilter: PropertyFilter? = null,
+    val entityFilter: EntityFilter? = null,
 ) : LlmReference {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -82,13 +101,23 @@ data class ToolishRag @JvmOverloads constructor(
 
     private val toolInstances: List<Any> = run {
         buildList {
+            // If the search operations already implement SearchTools, use them directly
             if (searchOperations is SearchTools) {
                 logger.info("Adding existing SearchTools to ToolishRag tools {}", name)
                 add(searchOperations)
             }
+            // This can confuse guide. Let's skip it for now.
+//            if (searchOperations is TypeRetrievalOperations) {
+//                logger.info("Adding TypeRetrievalTools to ToolishRag tools {}", name)
+//                add(TypeRetrievalTools(searchOperations))
+//            }
+            if (searchOperations is FinderOperations) {
+                logger.info("Adding FinderTools to ToolishRag tools {}", name)
+                add(FinderTools(searchOperations))
+            }
             if (searchOperations is VectorSearch) {
                 logger.info("Adding VectorSearchTools to ToolishRag tools {}", name)
-                add(VectorSearchTools(searchOperations, listener))
+                add(VectorSearchTools(searchOperations, vectorSearchFor, metadataFilter, entityFilter, listener))
             } else {
                 if (hints.any { it is TryHyDE }) {
                     logger.warn(
@@ -100,7 +129,7 @@ data class ToolishRag @JvmOverloads constructor(
             }
             if (searchOperations is TextSearch) {
                 logger.info("Adding TextSearchTools to ToolishRag tools {}", name)
-                add(TextSearchTools(searchOperations, listener))
+                add(TextSearchTools(searchOperations, textSearchFor, metadataFilter, entityFilter, listener))
             }
             if (searchOperations is ResultExpander) {
                 logger.info("Adding ResultExpanderTools to ToolishRag tools {}", name)
@@ -108,10 +137,26 @@ data class ToolishRag @JvmOverloads constructor(
             }
             if (searchOperations is RegexSearchOperations) {
                 logger.info("Adding RegexSearchTools to ToolishRag tools {}", name)
-                add(RegexSearchTools(searchOperations, listener))
+                add(RegexSearchTools(searchOperations, metadataFilter, entityFilter, listener))
             }
         }
     }
+
+    /**
+     * Set the types to search for with vector and text search
+     * @param vectorSearchFor list of retrievable types to enable vector search for
+     * @param textSearchFor list of retrievable types to enable text search for
+     * If only vectorSearchFor is provided, textSearchFor will be set to the same types
+     */
+    @JvmOverloads
+    fun withSearchFor(
+        vectorSearchFor: List<Class<out Retrievable>>,
+        textSearchFor: List<Class<out Retrievable>> = vectorSearchFor,
+    ): ToolishRag =
+        copy(
+            vectorSearchFor = vectorSearchFor,
+            textSearchFor = textSearchFor,
+        )
 
     /**
      * Add a hint to the RAG reference
@@ -132,6 +177,22 @@ data class ToolishRag @JvmOverloads constructor(
      */
     fun withListener(listener: ResultsListener): ToolishRag =
         copy(listener = listener)
+
+    /**
+     * Set a metadata filter to apply to all searches.
+     * Useful for multi-tenant scenarios where searches should be scoped to a specific owner.
+     * The filter is applied transparently - the LLM does not see or control it.
+     */
+    fun withMetadataFilter(filter: PropertyFilter): ToolishRag =
+        copy(metadataFilter = filter)
+
+    /**
+     * Set an entity filter to apply to all searches.
+     * Filters on object properties (e.g., entity fields) and labels rather than metadata.
+     * The filter is applied transparently - the LLM does not see or control it.
+     */
+    fun withEntityFilter(filter: EntityFilter): ToolishRag =
+        copy(entityFilter = filter)
 
     override fun toolInstances() = toolInstances
 
@@ -158,135 +219,7 @@ data class ToolishRag @JvmOverloads constructor(
 
 /**
  * Marker interface for RAG search tools
+ * Implementations should provide search functionality
+ * via methods annotated with @LlmTool
  */
 interface SearchTools
-
-/**
- * Classic vector search
- */
-class VectorSearchTools(
-    private val vectorSearch: VectorSearch,
-    private val resultsListener: ResultsListener? = null,
-) : SearchTools {
-
-    private val logger: Logger = LoggerFactory.getLogger(javaClass)
-
-    @Tool(description = "Perform vector search. Specify topK and similarity threshold from 0-1")
-    fun vectorSearch(
-        query: String,
-        topK: Int,
-        @ToolParam(description = "similarity threshold from 0-1") threshold: ZeroToOne,
-    ): String {
-        logger.info("Performing vector search with query='{}', topK={}, threshold={}", query, topK, threshold)
-        val start = Instant.now()
-        val results = vectorSearch.vectorSearch(
-            SimpleSearchRequest(query, threshold, topK),
-            Chunk::class.java
-        )
-        val runningTime = Duration.between(start, Instant.now())
-        resultsListener?.onResultsEvent(ResultsEvent(this, query, results, runningTime))
-        return SimpleRetrievableResultsFormatter.formatResults(SimilarityResults.fromList(results))
-    }
-}
-
-/**
- * Tools to expand chunks around an anchor chunk that has already been retrieved
- */
-class ResultExpanderTools(
-    private val resultExpander: ResultExpander,
-) : SearchTools {
-
-    @Tool(description = "given a chunk ID, expand to surrounding chunks")
-    fun broadenChunk(
-        @ToolParam(description = "id of the chunk to expand") chunkId: String,
-        @ToolParam(description = "chunksToAdd", required = false) chunksToAdd: Int = 2,
-    ): String {
-        val expandedElements = resultExpander.expandResult(chunkId, ResultExpander.Method.SEQUENCE, chunksToAdd)
-        return expandedElements
-            .filterIsInstance<Chunk>()
-            .joinToString("\n") { chunk ->
-                "Chunk ID: ${chunk.id}\nContent: ${chunk.text}\n"
-            }
-    }
-
-    @Tool(description = "given a content element ID, expand to parent section")
-    fun zoomOut(
-        @ToolParam(description = "id of the content element to expand") id: String,
-    ): String {
-        val expandedElements: List<ContentElement> = resultExpander.expandResult(id, ResultExpander.Method.ZOOM_OUT, 1)
-        return expandedElements
-            .filter { it is Embeddable }
-            .joinToString("\n") { contentElement ->
-                "${contentElement.javaClass.simpleName}: id=${contentElement.id}\nContent: ${(contentElement as Embeddable).embeddableValue()}\n"
-            }
-    }
-
-}
-
-/**
- * Tools to perform text search operations with Lucene syntax
- */
-class TextSearchTools(
-    private val textSearch: TextSearch,
-    private val resultsListener: ResultsListener? = null,
-) : SearchTools {
-    private val logger: Logger = LoggerFactory.getLogger(javaClass)
-
-    @Tool(
-        description = """
-        Perform BMI25 search. Specify topK and similarity threshold from 0-1
-        Query follows Lucene syntax, e.g. +term for required terms, -term for negative terms,
-        "quoted phrases", wildcards (*), fuzzy (~).
-    """
-    )
-    fun textSearch(
-        @ToolParam(
-            description = """"
-            Query in Lucene syntax,
-            e.g. +term for required terms, -term for negative terms,
-            quoted phrases", wildcards (*), fuzzy (~).
-        """
-        )
-        query: String,
-        topK: Int,
-        @ToolParam(description = "similarity threshold from 0-1") threshold: ZeroToOne,
-    ): String {
-        logger.info("Performing text search with query='{}', topK={}, threshold={}", query, topK, threshold)
-        val start = Instant.now()
-        val results = textSearch.textSearch(
-            SimpleSearchRequest(query, threshold, topK),
-            Chunk::class.java
-        )
-        val runningTime = Duration.between(start, Instant.now())
-        resultsListener?.onResultsEvent(ResultsEvent(this, query, results, runningTime))
-        return SimpleRetrievableResultsFormatter.formatResults(SimilarityResults.fromList(results))
-    }
-}
-
-class RegexSearchTools(
-    private val textSearch: RegexSearchOperations,
-    private val resultsListener: ResultsListener? = null,
-) : SearchTools {
-
-    @Tool(description = "Perform regex search across content elements. Specify topK")
-    fun regexSearch(
-        regex: String,
-        topK: Int,
-    ): String {
-        loggerFor<RegexSearchTools>().info("Performing regex search with regex='{}', topK={}", regex, topK)
-        val start = Instant.now()
-        val results = textSearch.regexSearch(Regex(regex), topK, Chunk::class.java)
-        val runningTime = Duration.between(start, Instant.now())
-        resultsListener?.onResultsEvent(ResultsEvent(this, regex, results, runningTime))
-        return SimpleRetrievableResultsFormatter.formatResults(SimilarityResults.fromList(results))
-    }
-}
-
-/**
- * Simple implementation of TextSimilaritySearchRequest for use in ToolishRag tools.
- */
-private data class SimpleSearchRequest(
-    override val query: String,
-    override val similarityThreshold: ZeroToOne,
-    override val topK: Int,
-) : TextSimilaritySearchRequest

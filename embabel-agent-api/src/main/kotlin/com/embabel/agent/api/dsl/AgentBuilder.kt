@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,9 +21,10 @@ import com.embabel.agent.api.common.TransformationActionContext
 import com.embabel.agent.api.common.asAction
 import com.embabel.agent.api.common.support.TransformationAction
 import com.embabel.agent.api.dsl.support.promptTransformer
+import com.embabel.agent.api.tool.Tool
 import com.embabel.agent.core.*
 import com.embabel.agent.experimental.primitive.PromptCondition
-import com.embabel.agent.spi.LlmCall
+import com.embabel.agent.core.support.LlmCall
 import com.embabel.common.ai.model.LlmOptions
 import com.embabel.common.ai.prompt.PromptContributor
 import com.embabel.common.ai.prompt.PromptContributorConsumer
@@ -32,7 +33,6 @@ import com.embabel.common.core.types.ZeroToOne
 import com.embabel.plan.CostComputation
 import com.embabel.plan.common.condition.ConditionDetermination
 import org.slf4j.LoggerFactory
-import org.springframework.ai.tool.ToolCallback
 import kotlin.reflect.KClass
 import kotlin.reflect.KProperty
 
@@ -108,7 +108,7 @@ class AgentBuilder(
      * Must be used if you have multiple actions
      */
     fun flow(block: AgentBuilder.() -> TypedAgentScopeBuilder<*>) {
-        val agentScope = block().build()
+        val agentScope = block().createAgentScope()
         logger.info(
             "Adding actions from agent scope {}: {}",
             agentScope.name,
@@ -173,7 +173,7 @@ class AgentBuilder(
         llm: LlmOptions = LlmOptions(),
         promptContributors: List<PromptContributor> = emptyList(),
         canRerun: Boolean = false,
-        toolCallbacks: Collection<ToolCallback> = emptyList(),
+        tools: Collection<Tool> = emptyList(),
         noinline prompt: (actionContext: TransformationActionContext<I, O>) -> String,
     ) {
         val action = promptTransformer(
@@ -189,7 +189,7 @@ class AgentBuilder(
             referencedInputProperties = referencedInputProperties,
             llm = llm,
             canRerun = canRerun,
-            toolCallbacks = toolCallbacks,
+            tools = tools,
             prompt = prompt,
             promptContributors = this.promptContributors + promptContributors,
             inputClass = I::class.java,

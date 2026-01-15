@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import com.embabel.agent.api.event.AgenticEventListener
 import com.embabel.agent.core.Agent
 import com.embabel.agent.core.last
 import com.embabel.agent.domain.io.UserInput
-import com.embabel.agent.prompt.persona.Persona
+import com.embabel.agent.prompt.persona.PersonaSpec
 import com.embabel.agent.tools.agent.AchievableGoalsToolGroupFactory
 import com.embabel.chat.Conversation
 import com.embabel.common.ai.model.LlmOptions
@@ -39,7 +39,7 @@ import com.embabel.common.ai.model.LlmOptions
 class DefaultChatAgentBuilder(
     autonomy: Autonomy,
     private val llm: LlmOptions,
-    private val persona: Persona = MARVIN,
+    private val persona: PersonaSpec = MARVIN,
     private val promptTemplate: String = "chat/default_chat",
     private val blackboardFormatter: BlackboardFormatter = DefaultBlackboardFormatter(),
 ) {

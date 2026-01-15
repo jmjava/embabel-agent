@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,12 @@
 package com.embabel.agent.config.models.anthropic
 
 import com.embabel.agent.api.models.AnthropicModels
-import com.embabel.agent.api.models.OpenAiModels
+import com.embabel.agent.spi.LlmService
 import com.embabel.agent.spi.common.RetryProperties
+import com.embabel.agent.spi.support.springai.SpringAiLlmService
 import com.embabel.common.ai.autoconfig.LlmAutoConfigMetadataLoader
 import com.embabel.common.ai.autoconfig.ProviderInitialization
 import com.embabel.common.ai.autoconfig.RegisteredModel
-import com.embabel.common.ai.model.Llm
 import com.embabel.common.ai.model.LlmOptions
 import com.embabel.common.ai.model.OptionsConverter
 import com.embabel.common.ai.model.PerTokenPricingModel
@@ -33,12 +33,14 @@ import org.springframework.ai.anthropic.AnthropicChatOptions
 import org.springframework.ai.anthropic.api.AnthropicApi
 import org.springframework.ai.model.tool.ToolCallingManager
 import org.springframework.beans.factory.ObjectProvider
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.beans.factory.config.ConfigurableBeanFactory
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.client.ClientHttpRequestFactory
 import org.springframework.web.client.RestClient
 import org.springframework.web.reactive.function.client.WebClient
 import java.time.LocalDate
@@ -52,6 +54,16 @@ import java.time.LocalDate
  */
 @ConfigurationProperties(prefix = "embabel.agent.platform.models.anthropic")
 class AnthropicProperties : RetryProperties {
+    /**
+     * Base URL for Anthropic API requests.
+     */
+    var baseUrl: String? = null
+
+    /**
+     * API key for authenticating with Anthropic services.
+     */
+    var apiKey: String? = null
+
     /**
      *  Maximum number of attempts.
      */
@@ -83,16 +95,22 @@ class AnthropicProperties : RetryProperties {
 @EnableConfigurationProperties(AnthropicProperties::class)
 @ExcludeFromJacocoGeneratedReport(reason = "Anthropic configuration can't be unit tested")
 class AnthropicModelsConfig(
-    @param:Value("\${ANTHROPIC_BASE_URL:}")
-    private val baseUrl: String,
-    @param:Value("\${ANTHROPIC_API_KEY}")
-    private val apiKey: String,
+    @param:Value("\${ANTHROPIC_BASE_URL:#{null}}")
+    private val envBaseUrl: String?,
+    @param:Value("\${ANTHROPIC_API_KEY:#{null}}")
+    private val envApiKey: String?,
     private val properties: AnthropicProperties,
     private val observationRegistry: ObjectProvider<ObservationRegistry>,
+    @param:Qualifier("aiModelHttpRequestFactory")
+    private val requestFactory: ObjectProvider<ClientHttpRequestFactory>,
     private val configurableBeanFactory: ConfigurableBeanFactory,
     private val modelLoader: LlmAutoConfigMetadataLoader<AnthropicModelDefinitions> = AnthropicModelLoader(),
 ) {
     private val logger = LoggerFactory.getLogger(AnthropicModelsConfig::class.java)
+
+    private val baseUrl: String? = envBaseUrl ?: properties.baseUrl
+    private val apiKey: String = envApiKey ?: properties.apiKey
+    ?: error("Anthropic API key required: set ANTHROPIC_API_KEY env var or embabel.agent.platform.models.anthropic.api-key")
 
     init {
         logger.info("Anthropic models are available: {}", properties)
@@ -134,7 +152,7 @@ class AnthropicModelsConfig(
     /**
      * Creates an individual Anthropic model from configuration.
      */
-    private fun createAnthropicLlm(modelDef: AnthropicModelDefinition): Llm {
+    private fun createAnthropicLlm(modelDef: AnthropicModelDefinition): LlmService<*> {
         val chatModel = AnthropicChatModel
             .builder()
             .defaultOptions(createDefaultOptions(modelDef))
@@ -148,9 +166,9 @@ class AnthropicModelsConfig(
             .observationRegistry(observationRegistry.getIfUnique { ObservationRegistry.NOOP })
             .build()
 
-        return Llm(
+        return SpringAiLlmService(
             name = modelDef.modelId,
-            model = chatModel,
+            chatModel = chatModel,
             provider = AnthropicModels.PROVIDER,
             optionsConverter = AnthropicOptionsConverter,
             knowledgeCutoffDate = modelDef.knowledgeCutoffDate,
@@ -196,7 +214,7 @@ class AnthropicModelsConfig(
     private fun anthropicLlmOf(
         name: String,
         knowledgeCutoffDate: LocalDate?,
-    ): Llm {
+    ): LlmService<*> {
         val chatModel = AnthropicChatModel
             .builder()
             .defaultOptions(
@@ -214,9 +232,9 @@ class AnthropicModelsConfig(
             .observationRegistry(observationRegistry.getIfUnique { ObservationRegistry.NOOP })
             .build()
 
-        return Llm(
+        return SpringAiLlmService(
             name = name,
-            model = chatModel,
+            chatModel = chatModel,
             provider = AnthropicModels.PROVIDER,
             optionsConverter = AnthropicOptionsConverter,
             knowledgeCutoffDate = knowledgeCutoffDate,
@@ -225,7 +243,7 @@ class AnthropicModelsConfig(
 
     private fun createAnthropicApi(): AnthropicApi {
         val builder = AnthropicApi.builder().apiKey(apiKey)
-        if (baseUrl.isNotBlank()) {
+        if (!baseUrl.isNullOrBlank()) {
             logger.info("Using custom Anthropic base URL: {}", baseUrl)
             builder.baseUrl(baseUrl)
         }
@@ -233,6 +251,7 @@ class AnthropicModelsConfig(
         builder
             .restClientBuilder(
                 RestClient.builder()
+                    .also { b -> requestFactory.ifAvailable { b.requestFactory(it) } }
                     .observationRegistry(observationRegistry.getIfUnique { ObservationRegistry.NOOP })
             )
         builder

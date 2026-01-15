@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import org.springframework.http.MediaType
 import org.springframework.web.client.RestClient
 
 /**
- * Remote a remote REST endpoint described in the specs
+ * Exposes a remote REST endpoint described in the specs
  */
 internal class RestAction(
     val serverRegistration: RestServerRegistration,

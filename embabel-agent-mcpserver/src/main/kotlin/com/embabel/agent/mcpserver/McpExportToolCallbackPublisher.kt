@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,11 +15,17 @@
  */
 package com.embabel.agent.mcpserver
 
-import com.embabel.agent.core.ToolCallbackPublisher
 import com.embabel.common.core.types.HasInfoString
+import org.springframework.ai.tool.ToolCallback
 
 /**
- * Tag interface extending Spring AI ToolCallbackProvider
- * that identifies tool callbacks that our MCP server exposes.
+ * Interface for publishing tools that our MCP server exposes.
+ * This is at the MCP export boundary where Spring AI ToolCallback usage is allowed.
  */
-interface McpExportToolCallbackPublisher : ToolCallbackPublisher, HasInfoString
+interface McpExportToolCallbackPublisher : HasInfoString {
+
+    /**
+     * Tool callbacks to expose via MCP.
+     */
+    val toolCallbacks: List<ToolCallback>
+}

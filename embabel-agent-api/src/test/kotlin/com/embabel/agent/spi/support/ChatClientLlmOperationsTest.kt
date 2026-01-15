@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,21 +17,27 @@ package com.embabel.agent.spi.support
 
 import com.embabel.agent.api.annotation.support.Wumpus
 import com.embabel.agent.api.common.InteractionId
+import com.embabel.agent.api.common.ToolObject
 import com.embabel.agent.core.AgentProcess
 import com.embabel.agent.core.ProcessContext
-import com.embabel.agent.spi.InvalidLlmReturnFormatException
-import com.embabel.agent.spi.InvalidLlmReturnTypeException
-import com.embabel.agent.spi.LlmInteraction
+import com.embabel.agent.core.support.safelyGetToolsFrom
+import com.embabel.agent.core.support.InvalidLlmReturnFormatException
+import com.embabel.agent.core.support.InvalidLlmReturnTypeException
+import com.embabel.agent.core.support.LlmInteraction
 import com.embabel.agent.spi.LlmOperations
 import com.embabel.agent.spi.support.springai.ChatClientLlmOperations
 import com.embabel.agent.spi.support.springai.DefaultToolDecorator
 import com.embabel.agent.spi.support.springai.MaybeReturn
+import com.embabel.agent.spi.support.springai.SpringAiLlmService
 import com.embabel.agent.spi.validation.DefaultValidationPromptGenerator
 import com.embabel.agent.support.SimpleTestAgent
 import com.embabel.agent.test.common.EventSavingAgenticEventListener
 import com.embabel.chat.SystemMessage
 import com.embabel.chat.UserMessage
-import com.embabel.common.ai.model.*
+import com.embabel.common.ai.model.DefaultOptionsConverter
+import com.embabel.common.ai.model.LlmOptions
+import com.embabel.common.ai.model.ModelProvider
+import com.embabel.common.ai.model.ModelSelectionCriteria
 import com.embabel.common.textio.template.JinjavaTemplateRenderer
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
@@ -51,7 +57,6 @@ import org.springframework.ai.chat.prompt.ChatOptions
 import org.springframework.ai.chat.prompt.DefaultChatOptions
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.model.tool.ToolCallingChatOptions
-import org.springframework.ai.support.ToolCallbacks
 import java.time.LocalDate
 import kotlin.test.assertEquals
 
@@ -133,7 +138,7 @@ class ChatClientLlmOperationsTest {
 
         val mockModelProvider = mockk<ModelProvider>()
         val crit = slot<ModelSelectionCriteria>()
-        val fakeLlm = Llm("fake", "provider", fakeChatModel, DefaultOptionsConverter)
+        val fakeLlm = SpringAiLlmService("fake", "provider", fakeChatModel, DefaultOptionsConverter)
         every { mockModelProvider.getLlm(capture(crit)) } returns fakeLlm
         val cco = ChatClientLlmOperations(
             modelProvider = mockModelProvider,
@@ -297,7 +302,7 @@ class ChatClientLlmOperationsTest {
             val fakeChatModel = FakeChatModel(jacksonObjectMapper().writeValueAsString(duke))
 
             // Wumpus's have tools
-            val toolCallbacks = ToolCallbacks.from(Wumpus("wumpy")).toList()
+            val tools = safelyGetToolsFrom(ToolObject(Wumpus("wumpy")))
             val setup = createChatClientLlmOperations(fakeChatModel)
             val result = setup.llmOperations.doTransform(
                 messages = listOf(
@@ -307,18 +312,18 @@ class ChatClientLlmOperationsTest {
                 interaction = LlmInteraction(
                     id = InteractionId("id"),
                     llm = LlmOptions(),
-                    toolCallbacks = toolCallbacks,
+                    tools = tools,
                 ),
                 outputClass = Dog::class.java,
                 llmRequestEvent = null,
             )
             assertEquals(duke, result)
             assertEquals(1, fakeChatModel.promptsPassed.size)
-            val tools = fakeChatModel.optionsPassed[0].toolCallbacks
-            assertEquals(toolCallbacks.size, tools.size, "Must have passed same number of tools")
+            val passedTools = fakeChatModel.optionsPassed[0].toolCallbacks
+            assertEquals(tools.size, passedTools.size, "Must have passed same number of tools")
             assertEquals(
-                toolCallbacks.map { it.toolDefinition.name() }.toSet(),
-                tools.map { it.toolDefinition.name() }.toSet(),
+                tools.map { it.definition.name }.toSet(),
+                passedTools.map { it.toolDefinition.name() }.toSet(),
             )
         }
 
@@ -328,15 +333,15 @@ class ChatClientLlmOperationsTest {
 
             val fakeChatModel = FakeChatModel(jacksonObjectMapper().writeValueAsString(duke))
 
-            // Wumpus's have tools
-            val toolCallbacks = ToolCallbacks.from(Wumpus("wumpy")).toList()
+            // Wumpus's have tools - use native Tool interface
+            val tools = safelyGetToolsFrom(ToolObject(Wumpus("wumpy")))
             val setup = createChatClientLlmOperations(fakeChatModel)
             val result = setup.llmOperations.createObject(
                 messages = listOf(UserMessage("prompt")),
                 interaction = LlmInteraction(
                     id = InteractionId("id"),
                     llm = LlmOptions(),
-                    toolCallbacks = toolCallbacks,
+                    tools = tools,
                 ),
                 outputClass = Dog::class.java,
                 action = SimpleTestAgent.actions.first(),
@@ -344,11 +349,11 @@ class ChatClientLlmOperationsTest {
             )
             assertEquals(duke, result)
             assertEquals(1, fakeChatModel.promptsPassed.size)
-            val tools = fakeChatModel.optionsPassed[0].toolCallbacks
-            assertEquals(toolCallbacks.size, tools.size, "Must have passed same number of tools")
+            val passedTools = fakeChatModel.optionsPassed[0].toolCallbacks
+            assertEquals(tools.size, passedTools.size, "Must have passed same number of tools")
             assertEquals(
-                toolCallbacks.map { it.toolDefinition.name() }.sorted(),
-                tools.map { it.toolDefinition.name() })
+                tools.map { it.definition.name }.sorted(),
+                passedTools.map { it.toolDefinition.name() })
         }
 
         @Test
@@ -558,26 +563,26 @@ class ChatClientLlmOperationsTest {
                 )
             )
 
-            // Wumpus's have tools
-            val toolCallbacks = ToolCallbacks.from(Wumpus("wumpy")).toList()
+            // Wumpus's have tools - use native Tool interface
+            val tools = safelyGetToolsFrom(ToolObject(Wumpus("wumpy")))
             val setup = createChatClientLlmOperations(fakeChatModel)
             setup.llmOperations.createObjectIfPossible(
                 messages = listOf(UserMessage("prompt")),
                 interaction = LlmInteraction(
                     id = InteractionId("id"),
                     llm = LlmOptions(),
-                    toolCallbacks = toolCallbacks,
+                    tools = tools,
                 ),
                 outputClass = Dog::class.java,
                 action = SimpleTestAgent.actions.first(),
                 agentProcess = setup.mockAgentProcess,
             )
             assertEquals(1, fakeChatModel.promptsPassed.size)
-            val tools = fakeChatModel.optionsPassed[0].toolCallbacks
-            assertEquals(toolCallbacks.size, tools.size, "Must have passed same number of tools")
+            val passedTools = fakeChatModel.optionsPassed[0].toolCallbacks
+            assertEquals(tools.size, passedTools.size, "Must have passed same number of tools")
             assertEquals(
-                toolCallbacks.map { it.toolDefinition.name() }.sorted(),
-                tools.map { it.toolDefinition.name() })
+                tools.map { it.definition.name }.sorted(),
+                passedTools.map { it.toolDefinition.name() })
         }
     }
 
@@ -734,7 +739,7 @@ class ChatClientLlmOperationsTest {
         }
 
         @Test
-        fun `doesnt pass description of validation rules to LLM if so configured`() {
+        fun `does not pass description of validation rules to LLM if so configured`() {
             // Picky eater
             data class BorderCollie(
                 val name: String,
@@ -800,6 +805,40 @@ class ChatClientLlmOperationsTest {
             assertTrue(firstPrompt.contains("eats field must be 'mince'"), "Prompt mentions validation violation")
 
             assertEquals(validHusky, createdDog, "Invalid response should have been corrected")
+        }
+
+        @Test
+        fun `does not validate if interaction validation is set to false`() {
+            // Picky eater
+            data class BorderCollie(
+                val name: String,
+                @field:Pattern(regexp = "^mince$", message = "eats field must be 'mince'")
+                val eats: String,
+            )
+
+            val invalidHusky = BorderCollie("Husky", eats = "kibble")
+            val fakeChatModel = FakeChatModel(
+                jacksonObjectMapper().writeValueAsString(invalidHusky)
+            )
+            val prompt =
+                "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+            val setup = createChatClientLlmOperations(
+                fakeChatModel = fakeChatModel,
+                dataBindingProperties = LlmDataBindingProperties(
+                    sendValidationInfo = true,
+                )
+            )
+            val createdDog = setup.llmOperations.createObject(
+                messages = listOf(UserMessage(prompt)),
+                interaction = LlmInteraction(
+                    id = InteractionId("id"), llm = LlmOptions(),
+                    validation = false
+                ),
+                outputClass = BorderCollie::class.java,
+                action = SimpleTestAgent.actions.first(),
+                agentProcess = setup.mockAgentProcess,
+            )
+            assertEquals(invalidHusky, createdDog, "Invalid response should have been corrected")
         }
     }
 

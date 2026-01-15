@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,16 @@
 package com.embabel.agent.core
 
 import com.embabel.agent.api.common.ToolsStats
-import com.embabel.common.ai.model.Llm
+import com.embabel.common.ai.model.LlmMetadata
 import com.embabel.common.core.types.Timed
 import com.embabel.common.core.types.Timestamped
 import org.springframework.ai.chat.metadata.DefaultUsage
 import java.time.Duration
 import java.time.Instant
 
+/**
+ * History of LLM invocations made during an agent process.
+ */
 interface LlmInvocationHistory {
 
     val llmInvocations: List<LlmInvocation>
@@ -36,8 +39,8 @@ interface LlmInvocationHistory {
     /**
      * Distinct list of LLMs use, sorted by name.
      */
-    fun modelsUsed(): List<Llm> {
-        return llmInvocations.map { it.llm }
+    fun modelsUsed(): List<LlmMetadata> {
+        return llmInvocations.map { it.llmMetadata }
             .distinctBy { it.name }
             .sortedBy { it.name }
     }
@@ -74,27 +77,11 @@ interface LlmInvocationHistory {
 }
 
 /**
- * LLM usage data
- */
-data class Usage(
-    val promptTokens: Int?,
-    val completionTokens: Int?,
-    val nativeUsage: Any?,
-) {
-
-    val totalTokens: Int?
-        get() = when {
-            promptTokens == null && completionTokens == null -> null
-            else -> (promptTokens ?: 0) + (completionTokens ?: 0)
-        }
-}
-
-/**
  * Invocation we made to an LLM
  * @param agentName name of the agent, if known
  */
 data class LlmInvocation(
-    val llm: Llm,
+    val llmMetadata: LlmMetadata,
     val usage: Usage,
     val agentName: String? = null,
     override val timestamp: Instant,
@@ -104,7 +91,7 @@ data class LlmInvocation(
     /**
      * Dollar cost of this interaction.
      */
-    fun cost(): Double = llm.pricingModel?.costOf(
+    fun cost(): Double = llmMetadata.pricingModel?.costOf(
         DefaultUsage(
             usage.promptTokens ?: 0,
             usage.completionTokens ?: 0,

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,9 +64,9 @@ class OperationContextAiTest {
             every { mockEmbeddingService.model } returns mockEmbeddingModel
 
             val ai = createOperationContextAi(mockContext)
-            val result = ai.withEmbeddingModel(criteria)
+            val result = ai.withEmbeddingService(criteria)
 
-            assertEquals(mockEmbeddingModel, result, "Embedding model not returned correctly")
+            assertEquals(mockEmbeddingService, result, "Embedding model not returned correctly")
             verify { mockModelProvider.getEmbeddingService(criteria) }
         }
 
@@ -83,9 +83,9 @@ class OperationContextAiTest {
             every { mockEmbeddingService.model } returns mockEmbeddingModel
 
             val ai = createOperationContextAi(mockContext)
-            val result = ai.withEmbeddingModel(modelName)
+            val result = ai.withEmbeddingService(modelName)
 
-            assertEquals(mockEmbeddingModel, result, "Embedding model not returned correctly")
+            assertEquals(mockEmbeddingService, result, "Embedding model not returned correctly")
             verify {
                 mockModelProvider.getEmbeddingService(any())
             }
@@ -103,9 +103,9 @@ class OperationContextAiTest {
             every { mockEmbeddingService.model } returns mockEmbeddingModel
 
             val ai = createOperationContextAi(mockContext)
-            val result = ai.withDefaultEmbeddingModel()
+            val result = ai.withDefaultEmbeddingService()
 
-            assertEquals(mockEmbeddingModel, result, "Default embedding model not returned correctly")
+            assertEquals(mockEmbeddingService, result, "Default embedding model not returned correctly")
             verify { mockModelProvider.getEmbeddingService(DefaultModelSelectionCriteria) }
         }
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,10 @@
 package com.embabel.agent.openai
 
 import com.embabel.agent.api.models.OpenAiModels
+import com.embabel.agent.spi.LlmService
+import com.embabel.agent.spi.support.springai.SpringAiLlmService
 import com.embabel.common.ai.model.*
+import com.embabel.common.util.ObjectProviders
 import com.embabel.common.util.loggerFor
 import io.micrometer.observation.ObservationRegistry
 import org.slf4j.Logger
@@ -31,14 +34,14 @@ import org.springframework.ai.openai.OpenAiChatOptions
 import org.springframework.ai.openai.OpenAiEmbeddingModel
 import org.springframework.ai.openai.OpenAiEmbeddingOptions
 import org.springframework.ai.openai.api.OpenAiApi
-import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.ai.retry.RetryUtils
+import org.springframework.beans.factory.ObjectProvider
+import org.springframework.http.client.ClientHttpRequestFactory
+import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.retry.support.RetryTemplate
 import org.springframework.web.client.RestClient
 import org.springframework.web.reactive.function.client.WebClient
 import java.time.LocalDate
-import java.time.Duration
-import kotlin.jvm.javaClass
 
 /**
  * Generic support for OpenAI compatible models.
@@ -52,7 +55,13 @@ open class OpenAiCompatibleModelFactory(
     private val completionsPath: String?,
     private val embeddingsPath: String?,
     private val observationRegistry: ObservationRegistry,
+    private val requestFactory: ObjectProvider<ClientHttpRequestFactory> = ObjectProviders.empty()
 ) {
+
+    companion object {
+        private const val CONNECT_TIMEOUT_MS = 5000
+        private const val READ_TIMEOUT_MS = 600000
+    }
 
     protected val logger: Logger = LoggerFactory.getLogger(javaClass)
 
@@ -84,16 +93,15 @@ open class OpenAiCompatibleModelFactory(
         }
 
         //add observation registry to rest and web client builders
-        // Use SimpleClientHttpRequestFactory (HttpURLConnection) for robust connectivity to local LM Studio.
-        // Some default clients (like JDK HttpClient) may struggle with localhost/127.0.0.1 resolution in some environments.
-        val requestFactory = SimpleClientHttpRequestFactory()
-        requestFactory.setConnectTimeout(5000)
-        requestFactory.setReadTimeout(600000) //
-
         builder
             .restClientBuilder(
                 RestClient.builder()
-                    .requestFactory(requestFactory)
+                    .requestFactory(requestFactory.getIfAvailable {
+                        SimpleClientHttpRequestFactory().apply {
+                            setConnectTimeout(CONNECT_TIMEOUT_MS)
+                            setReadTimeout(READ_TIMEOUT_MS)
+                        }
+                    })
                     .observationRegistry(observationRegistry)
             )
         builder
@@ -113,10 +121,10 @@ open class OpenAiCompatibleModelFactory(
         knowledgeCutoffDate: LocalDate?,
         optionsConverter: OptionsConverter<*> = OpenAiChatOptionsConverter,
         retryTemplate: RetryTemplate = RetryUtils.DEFAULT_RETRY_TEMPLATE,
-    ): Llm {
-        return Llm(
+    ): LlmService<*> {
+        return SpringAiLlmService(
             name = model,
-            model = chatModelOf(model, retryTemplate),
+            chatModel = chatModelOf(model, retryTemplate),
             provider = provider,
             optionsConverter = optionsConverter,
             pricingModel = pricingModel,
@@ -135,7 +143,7 @@ open class OpenAiCompatibleModelFactory(
                 .model(model)
                 .build(),
         )
-        return EmbeddingService(
+        return SpringAiEmbeddingService(
             name = model,
             model = embeddingModel,
             provider = provider,

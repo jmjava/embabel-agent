@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 package com.embabel.agent.e2e
 
 import com.embabel.agent.AgentApiTestApplication
+import com.embabel.agent.api.annotation.LlmTool
 import com.embabel.agent.api.common.Ai
 import com.embabel.agent.api.common.autonomy.Autonomy
 import com.embabel.agent.api.common.streaming.StreamingPromptRunnerOperations
@@ -23,11 +24,12 @@ import com.embabel.agent.api.common.streaming.asStreaming
 import com.embabel.agent.api.common.support.streaming.StreamingCapabilityDetector
 import com.embabel.agent.core.AgentPlatform
 import com.embabel.agent.spi.LlmOperations
+import com.embabel.agent.spi.LlmService
 import com.embabel.agent.spi.ToolDecorator
 import com.embabel.agent.spi.support.FakeChatModel
 import com.embabel.agent.spi.support.springai.ChatClientLlmOperations
+import com.embabel.agent.spi.support.springai.SpringAiLlmService
 import com.embabel.common.ai.model.DefaultOptionsConverter
-import com.embabel.common.ai.model.Llm
 import com.embabel.common.ai.model.ModelProvider
 import com.embabel.common.ai.model.PricingModel
 import com.embabel.common.textio.template.TemplateRenderer
@@ -43,7 +45,6 @@ import org.springframework.ai.chat.model.Generation
 import org.springframework.ai.chat.prompt.ChatOptions
 import org.springframework.ai.chat.prompt.DefaultChatOptions
 import org.springframework.ai.chat.prompt.Prompt
-import org.springframework.ai.tool.annotation.Tool
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
@@ -79,7 +80,6 @@ class FakeStreamingChatModel(
 }
 
 
-
 @TestConfiguration
 @Profile("streaming-test")
 class StreamingTestConfig {
@@ -95,10 +95,10 @@ class StreamingTestConfig {
     }
 
     @Bean
-    fun nonStreamingTestLlm(): Llm {
-        return Llm(
+    fun nonStreamingTestLlm(): LlmService<*> {
+        return SpringAiLlmService(
             name = NON_STREAMING_MODEL_NAME,
-            model = FakeChatModel(NON_STREAMING_RESPONSE),
+            chatModel = FakeChatModel(NON_STREAMING_RESPONSE),
             pricingModel = PricingModel.usdPer1MTokens(LOW_COST, LOW_COST),
             provider = TEST_PROVIDER,
             optionsConverter = DefaultOptionsConverter,
@@ -106,16 +106,15 @@ class StreamingTestConfig {
     }
 
     @Bean
-    fun streamingTestLlm(): Llm {
-        return Llm(
+    fun streamingTestLlm(): LlmService<*> {
+        return SpringAiLlmService(
             name = STREAMING_MODEL_NAME,
-            model = FakeStreamingChatModel(STREAMING_RESPONSE),
+            chatModel = FakeStreamingChatModel(STREAMING_RESPONSE),
             pricingModel = PricingModel.usdPer1MTokens(HIGHER_COST, HIGHER_COST),
             provider = TEST_PROVIDER,
             optionsConverter = DefaultOptionsConverter,
         )
     }
-
 
 
     @Bean
@@ -146,7 +145,7 @@ data class SimpleItem(val name: String)
 class SimpleTool {
     private var wasInvokedFlag = false
 
-    @Tool(description = "Simple test tool that greets a person")
+    @LlmTool(description = "Simple test tool that greets a person")
     fun greet(name: String): String {
         wasInvokedFlag = true
         return "Hello $name"
@@ -167,8 +166,8 @@ class SimpleTool {
 @ActiveProfiles("test", "streaming-test")
 @Import(StreamingTestConfig::class)
 class LLMStreamingIntegrationTest(
-    @param: Autowired private val autonomy: Autonomy,
-    @param: Autowired private val ai: Ai,
+    @param:Autowired private val autonomy: Autonomy,
+    @param:Autowired private val ai: Ai,
 ) {
 
     private val logger = LoggerFactory.getLogger(LLMStreamingIntegrationTest::class.java)
@@ -206,6 +205,7 @@ class LLMStreamingIntegrationTest(
                 val firstResult = results.blockFirst()
                 assertNotNull(firstResult, "Should receive streaming result")
             }
+
             else -> {
                 assertTrue(false, "StreamingOperations should be castable to StreamingPromptRunnerOperations")
             }
@@ -259,6 +259,7 @@ class LLMStreamingIntegrationTest(
                 // Verify basic functionality preserved
                 assertNotNull(results, "Should receive streaming results with tools present")
             }
+
             else -> {
                 fail("StreamingOperations should be castable to StreamingPromptRunnerOperations")
             }
@@ -318,6 +319,7 @@ class LLMStreamingIntegrationTest(
                         receivedEvents.add("THINKING: $content")
                         logger.info("Integration test received thinking: {}", content)
                     }
+
                     event.isObject() -> {
                         val obj = event.getObject()!!
                         receivedEvents.add("OBJECT: ${obj.name}")

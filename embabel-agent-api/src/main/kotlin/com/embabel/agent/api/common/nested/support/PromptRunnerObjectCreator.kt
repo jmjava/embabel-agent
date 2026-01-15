@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 package com.embabel.agent.api.common.nested.support
 
 import com.embabel.agent.api.common.PromptRunner
+import com.embabel.agent.api.common.nested.ObjectCreationExample
 import com.embabel.agent.api.common.nested.ObjectCreator
 import com.embabel.chat.Message
 import com.embabel.common.ai.prompt.PromptContributor
@@ -29,8 +30,7 @@ internal data class PromptRunnerObjectCreator<T>(
 ) : ObjectCreator<T> {
 
     override fun withExample(
-        description: String,
-        value: T,
+        example: ObjectCreationExample<T>,
     ): ObjectCreator<T> {
         return copy(
             promptRunner = promptRunner
@@ -38,8 +38,8 @@ internal data class PromptRunnerObjectCreator<T>(
                 .withPromptContributor(
                     PromptContributor.Companion.fixed(
                         """
-                        Example: $description
-                        ${objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(value)}
+                        Example: ${example.description}
+                        ${objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(example.value)}
                         """.trimIndent()
                     )
                 )
@@ -52,6 +52,14 @@ internal data class PromptRunnerObjectCreator<T>(
         return copy(
             promptRunner = promptRunner
                 .withPropertyFilter(filter)
+        )
+    }
+
+    override fun withValidation(
+        validation: Boolean
+    ): ObjectCreator<T> {
+        return copy(
+            promptRunner = promptRunner.withValidation(validation)
         )
     }
 

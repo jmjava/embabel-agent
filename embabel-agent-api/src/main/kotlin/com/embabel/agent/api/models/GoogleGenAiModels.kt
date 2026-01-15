@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ class GoogleGenAiModels {
 
         // Gemini 3 Family (Preview - Latest Generation)
         const val GEMINI_3_PRO_PREVIEW = "gemini-3-pro-preview"
+        const val GEMINI_3_FLASH_PREVIEW = "gemini-3-flash-preview"
 
         // Gemini 2.5 Family (Stable - Current Generation)
         const val GEMINI_2_5_PRO = "gemini-2.5-pro"

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,12 +15,15 @@
  */
 package com.embabel.agent.core
 
+import com.embabel.common.core.types.Named
+
 /**
  * Represents a relationship between two domain types.
  * @param from The source domain type
  * @param to The target domain type
  * @param name The name of the relationship (inferred from property name)
  * @param cardinality The cardinality of the relationship
+ * @param metadata Semantic metadata from [@Semantics] annotation, including natural language predicates
  */
 data class AllowedRelationship(
     val from: DomainType,
@@ -28,12 +31,13 @@ data class AllowedRelationship(
     val name: String,
     val description: String = name,
     val cardinality: Cardinality,
+    val metadata: Map<String, String> = emptyMap(),
 )
 
 /**
  * Exposes access to a set of known data types
  */
-interface DataDictionary {
+interface DataDictionary : Named {
 
     /**
      * All known types referenced by this component.
@@ -65,6 +69,7 @@ interface DataDictionary {
                             to = property.type,
                             name = property.name,
                             cardinality = property.cardinality,
+                            metadata = property.metadata,
                         )
                     )
                 }
@@ -86,21 +91,24 @@ interface DataDictionary {
 
         @JvmStatic
         fun fromDomainTypes(
+            name: String,
             domainTypes: Collection<DomainType>,
         ): DataDictionary {
-            return DataDictionaryImpl(domainTypes)
+            return DataDictionaryImpl(name, domainTypes)
         }
 
         @JvmStatic
         fun fromClasses(
+            name: String,
             vararg embabelTypes: Class<*>,
         ): DataDictionary {
-            return fromDomainTypes(embabelTypes.map { JvmType(it) })
+            return fromDomainTypes(name, embabelTypes.map { JvmType(it) })
         }
     }
 
 }
 
 private class DataDictionaryImpl(
+    override val name: String,
     override val domainTypes: Collection<DomainType>,
 ) : DataDictionary

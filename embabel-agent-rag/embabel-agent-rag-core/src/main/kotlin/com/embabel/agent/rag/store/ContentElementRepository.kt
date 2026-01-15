@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,10 +20,34 @@ import com.embabel.agent.rag.model.ContentElement
 import com.embabel.agent.rag.model.HierarchicalContentElement
 import com.embabel.common.core.types.Named
 
+/**
+ * Information about content and capabilities of a ContentElementRepository.
+ */
 interface ContentElementRepositoryInfo {
-    val totalChunks: Int
-    val totalDocuments: Int
+
+    /**
+     * Number of chunks stored in this repository.
+     */
+    val chunkCount: Int
+
+    /**
+     * Number of documents stored in this repository.
+     */
+    val documentCount: Int
+
+    /**
+     * Number of content elements stored in this repository.
+     */
+    val contentElementCount: Int
+
+    /**
+     * Does this repository support embeddings?
+     */
     val hasEmbeddings: Boolean
+
+    /**
+     * Is this repository persistent across application restarts?
+     */
     val isPersistent: Boolean
 }
 
@@ -39,8 +63,7 @@ interface ContentElementRepository : Named {
         // Default no-op
     }
 
-    // TODO add when we can: Not yet uncommented because of backboard compatibility
-//    fun info(): ContentElementRepositoryInfo
+    fun info(): ContentElementRepositoryInfo
 
     fun findAllChunksById(chunkIds: List<String>): Iterable<Chunk>
 
@@ -52,11 +75,6 @@ interface ContentElementRepository : Named {
      * even if the ContentElementRepository supports that.
      */
     fun save(element: ContentElement): ContentElement
-
-    /**
-     * Return the total number of content elements in the repository
-     */
-    fun count(): Int
 
     /**
      * Find chunks associated with the given entity with the given ID.

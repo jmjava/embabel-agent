@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,12 @@
 package com.embabel.agent.a2a.server.config
 
 import com.embabel.agent.spi.LlmOperations
+import com.embabel.agent.spi.LlmService
+import com.embabel.agent.spi.support.springai.SpringAiLlmService
 import com.embabel.agent.test.integration.DummyObjectCreatingLlmOperations
 import com.embabel.common.ai.model.DefaultOptionsConverter
 import com.embabel.common.ai.model.EmbeddingService
-import com.embabel.common.ai.model.Llm
+import com.embabel.common.ai.model.SpringAiEmbeddingService
 import org.mockito.Mockito.mock
 import org.slf4j.LoggerFactory
 import org.springframework.ai.chat.model.ChatModel
@@ -55,9 +57,9 @@ class FakeAiConfiguration {
      * Test LLM bean that matches the default-llm configuration
      */
     @Bean(name = ["test-llm"])
-    fun testLlm(): Llm = Llm(
+    fun testLlm(): LlmService<*> = SpringAiLlmService(
         name = "test-llm",
-        model = mock(ChatModel::class.java),
+        chatModel = mock(ChatModel::class.java),
         provider = "test",
         optionsConverter = DefaultOptionsConverter
     )
@@ -66,7 +68,7 @@ class FakeAiConfiguration {
      * Test embedding service that matches the default-embedding-model configuration
      */
     @Bean(name = ["test-embedding"])
-    fun testEmbedding(): EmbeddingService = EmbeddingService(
+    fun testEmbedding(): EmbeddingService = SpringAiEmbeddingService(
         name = "test-embedding",
         model = mock(EmbeddingModel::class.java),
         provider = "test"
@@ -76,7 +78,7 @@ class FakeAiConfiguration {
      * Additional test embedding model for the 'best' role
      */
     @Bean(name = ["test"])
-    fun test(): EmbeddingService = EmbeddingService(
+    fun test(): EmbeddingService = SpringAiEmbeddingService(
         name = "test",
         model = mock(EmbeddingModel::class.java),
         provider = "test"

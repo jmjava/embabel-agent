@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import com.embabel.agent.event.RagRequestReceivedEvent
 import com.embabel.agent.event.RagResponseEvent
 import com.embabel.agent.rag.model.Chunk
 import com.embabel.agent.rag.model.ContentElement
-import com.embabel.agent.rag.model.RetrievableEntity
+import com.embabel.agent.rag.model.NamedEntityData
 import com.embabel.agent.rag.pipeline.event.InitialRequestRagPipelineEvent
 import com.embabel.agent.rag.pipeline.event.InitialResponseRagPipelineEvent
 import com.embabel.agent.rag.service.*
@@ -132,7 +132,7 @@ class PipelinedRagServiceEnhancer(
                 enhancedRagResponse.results.size,
                 enhancedRagResponse.results.count { it.match is Chunk },
                 enhancedRagResponse.results.count { it.match is ContentElement && it.match !is Chunk },
-                enhancedRagResponse.results.count { it.match is RetrievableEntity },
+                enhancedRagResponse.results.count { it.match is NamedEntityData },
             )
             logger.info(
                 "Results: {}",

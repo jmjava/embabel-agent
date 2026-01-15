@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@
  */
 package com.embabel.agent.rag.service
 
+import com.embabel.agent.rag.filter.EntityFilter
+import com.embabel.agent.rag.filter.PropertyFilter
 import com.embabel.agent.rag.model.ContentElement
 import com.embabel.agent.rag.model.Retrievable
 import com.embabel.common.core.types.SimilarityResult
@@ -22,30 +24,104 @@ import com.embabel.common.core.types.TextSimilaritySearchRequest
 
 /**
  * Tag interface for search operations
- * Concrete implementations implement one or more subinterfaces
+ * Concrete implementations are RAG building blocks that
+ * implement one or more subinterfaces and
+ * are easy to expose to LLMs via tools
  */
 interface SearchOperations
 
 /**
- * RAG building blocks
- * Implemented by types that can search for chunks or other retrievables
- * Ease to expose to LLMs via tools
+ * Supports listing supported retrievable types
  */
-interface VectorSearch : SearchOperations {
+interface TypeRetrievalOperations : SearchOperations {
 
     /**
-     * Perform classic vector search
+     * Is this type supported?
+     * @param type the type name of the retrievable
+     * Normally matches the simple class name of the retrievable type
+     * or the name of a schema type
+     * @return true if supported
+     */
+    fun supportsType(type: String): Boolean
+}
+
+
+/**
+ * Supports retrieval of retrievables by ID
+ */
+interface FinderOperations : TypeRetrievalOperations {
+
+    /**
+     * Retrieve an entity by its ID
+     * Core finder support not necessarily exposed as LLM tool.
+     */
+    fun <T> findById(
+        id: String,
+        clazz: Class<T>,
+    ): T?
+
+    /**
+     * Retrieve an entity by its ID and type name
+     * @param id the ID of the retrievable
+     * @param type the type name of the retrievable
+     * Normally matches the simple class name of the retrievable type
+     * or the name of a schema type
+     */
+    fun <T : Retrievable> findById(
+        id: String,
+        type: String
+    ): T?
+}
+
+/**
+ * Traditional RAG vector search
+ */
+interface VectorSearch : TypeRetrievalOperations {
+
+    /**
+     * Perform classic vector search.
+     * @param request the search request containing query, topK, and similarity threshold
+     * @param clazz the type of Retrievable to search for
+     * @return matching results ranked by similarity score
      */
     fun <T : Retrievable> vectorSearch(
         request: TextSimilaritySearchRequest,
         clazz: Class<T>,
     ): List<SimilarityResult<T>>
-
 }
 
-interface TextSearch : SearchOperations {
+/**
+ * Vector search with native property filtering support.
+ * Implementations translate [PropertyFilter] to native query syntax
+ * (e.g., Spring AI Filter.Expression, Cypher WHERE clause, Lucene field queries).
+ */
+interface FilteringVectorSearch : VectorSearch {
+
+    /**
+     * Perform vector search with property filtering.
+     *
+     * @param request the search request containing query, topK, and similarity threshold
+     * @param clazz the type of Retrievable to search for
+     * @param metadataFilter filter on metadata properties (e.g., source, ingestion date)
+     * @param entityFilter filter on object properties (e.g., entity fields) and label
+     * @return matching results ranked by similarity score
+     */
+    fun <T : Retrievable> vectorSearchWithFilter(
+        request: TextSimilaritySearchRequest,
+        clazz: Class<T>,
+        metadataFilter: PropertyFilter? = null,
+        entityFilter: EntityFilter? = null,
+    ): List<SimilarityResult<T>>
+}
+
+/**
+ * Full-text search using Lucene query syntax
+ */
+interface TextSearch : TypeRetrievalOperations {
+
     /**
      * Performs full-text search using Lucene query syntax.
+     *
      * Not all implementations will support all capabilities (such as fuzzy matching).
      * However, the use of quotes for phrases and + / - for required / excluded terms should be widely supported.
      *
@@ -94,12 +170,66 @@ interface TextSearch : SearchOperations {
     val luceneSyntaxNotes: String
 }
 
+/**
+ * Text search with native property filtering support.
+ * Implementations translate [PropertyFilter] to native query syntax.
+ */
+interface FilteringTextSearch : TextSearch {
+
+    /**
+     * Perform text search with property filtering.
+     *
+     * @param request the text similarity search request
+     * @param clazz the type of [Retrievable] to search
+     * @param metadataFilter filter on metadata properties (e.g., source, ingestion date)
+     * @param entityFilter filter on object properties (e.g., entity fields)
+     * @return matching results ranked by BM25 relevance score
+     */
+    fun <T : Retrievable> textSearchWithFilter(
+        request: TextSimilaritySearchRequest,
+        clazz: Class<T>,
+        metadataFilter: PropertyFilter? = null,
+        entityFilter: EntityFilter? = null,
+    ): List<SimilarityResult<T>>
+}
+
 interface RegexSearchOperations : SearchOperations {
 
+    /**
+     * Perform regex search.
+     * @param regex the regex pattern to match
+     * @param topK maximum number of results to return
+     * @param clazz the type of Retrievable to search for
+     * @return matching results
+     */
     fun <T : Retrievable> regexSearch(
         regex: Regex,
         topK: Int,
         clazz: Class<T>,
+    ): List<SimilarityResult<T>>
+}
+
+/**
+ * Regex search with native property filtering support.
+ */
+interface FilteringRegexSearch : RegexSearchOperations {
+
+    /**
+     * Perform regex search with property filtering.
+     *
+     * @param regex the regex pattern to match
+     * @param topK maximum number of results to return
+     * @param clazz the type of Retrievable to search for
+     * @param metadataFilter filter on metadata properties (e.g., source, ingestion date)
+     * @param entityFilter filter on object properties (e.g., entity fields) and labels
+     * @return matching results
+     */
+    fun <T : Retrievable> regexSearchWithFilter(
+        regex: Regex,
+        topK: Int,
+        clazz: Class<T>,
+        metadataFilter: PropertyFilter? = null,
+        entityFilter: EntityFilter? = null,
     ): List<SimilarityResult<T>>
 }
 

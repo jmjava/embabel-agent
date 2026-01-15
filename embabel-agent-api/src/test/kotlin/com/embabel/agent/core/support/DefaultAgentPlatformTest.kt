@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@ import com.embabel.agent.core.ContextId
 import com.embabel.agent.core.ProcessOptions
 import com.embabel.agent.spi.ContextRepository
 import com.embabel.agent.spi.config.spring.AgentPlatformProperties.ProcessType
+import com.embabel.agent.spi.support.InMemoryContext
 import com.embabel.agent.spi.support.InMemoryContextRepository
-import com.embabel.agent.spi.support.SimpleContext
 import com.embabel.agent.support.Dog
 import com.embabel.agent.test.common.EventSavingAgenticEventListener
 import io.mockk.mockk
@@ -79,7 +79,7 @@ class DefaultAgentPlatformTest {
         @Test
         fun `loads context`() {
             val contextRepository = InMemoryContextRepository()
-            var context: Context = SimpleContext(id = "1234")
+            var context: Context = InMemoryContext(id = "1234")
             context.bind("otherDog", Dog("Apollo"))
             context = contextRepository.save(context)
             val dap = raw(contextRepository = contextRepository)

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,16 +15,26 @@
  */
 package com.embabel.agent.api.identity
 
+/**
+ * Common interface for working with users in the system.
+ * Applications don't need to use this,
+ * but may find it useful
+ */
 interface UserService<U : User> {
 
     fun findById(id: String): U?
 
+    fun findByUsername(username: String): U?
+
+    fun findByEmail(email: String): U?
+
     /**
-     * Add the user to the system.
+     * Add the user to the system given core information.
+     * Implementations may consider their own subtypes.
      * Default implementation refuses to do so.
      */
     fun provisionUser(
-        userInfo: U,
+        userInfo: User,
     ): U {
         error("User cannot be provisioned: $userInfo")
     }

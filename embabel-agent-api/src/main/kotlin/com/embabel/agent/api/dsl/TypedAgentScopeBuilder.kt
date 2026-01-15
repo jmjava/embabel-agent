@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -139,7 +139,7 @@ fun <A, B, C> chain(
         },
         TransformationAction(
             name = "chain-1",
-            description = "chain element 0",
+            description = "chain element 1",
             cost = { 0.0 },
             value = { 0.0 },
             canRerun = false,
@@ -413,7 +413,7 @@ fun <C> repeat(
             }
             until(input, it)
         })
-    val doerScope = what.invoke().build()
+    val doerScope = what.invoke().createAgentScope()
     val completionAction = TransformationAction(
         name = "repeat",
         description = "Repeat until condition is met",
@@ -455,7 +455,7 @@ data class TypedAgentScopeBuilder<O>(
     val opaque: Boolean = false,
 ) : AgentScopeBuilder {
 
-    override fun build(): AgentScope {
+    override fun createAgentScope(): AgentScope {
         return AgentScope(
             name = name,
             actions = actions,

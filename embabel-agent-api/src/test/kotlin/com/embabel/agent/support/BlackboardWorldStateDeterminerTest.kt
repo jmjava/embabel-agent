@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -155,13 +155,17 @@ class BlackboardWorldStateDeterminerTest {
             blackboard.getValue(
                 firstArg(),
                 secondArg(),
-                DataDictionary.fromClasses(
-                    *blackboard.objects.map { it.javaClass }.toTypedArray()
+                DataDictionary.fromDomainTypes(
+                    "test",
+                    blackboard.objects.map { JvmType(it.javaClass) }
                 ),
             )
         }
         every { mockAgentProcess.get(any()) } answers {
             blackboard.get(firstArg())
+        }
+        every { mockAgentProcess.getCondition(any()) } answers {
+            blackboard.getCondition(firstArg())
         }
         every { mockAgentProcess.agent } returns SimpleTestAgent
         val bsb = BlackboardWorldStateDeterminer(
@@ -329,8 +333,9 @@ class BlackboardWorldStateDeterminerTest {
                 blackboard.getValue(
                     firstArg(),
                     secondArg(),
-                    DataDictionary.fromClasses(
-                        *blackboard.objects.map { it.javaClass }.toTypedArray()
+                    DataDictionary.fromDomainTypes(
+                        "test",
+                        blackboard.objects.map { JvmType(it.javaClass) }
                     )
                 )
             }

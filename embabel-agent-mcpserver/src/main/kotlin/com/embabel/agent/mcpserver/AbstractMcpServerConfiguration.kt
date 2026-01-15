@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  */
 package com.embabel.agent.mcpserver
 
+import com.embabel.agent.api.annotation.LlmTool
 import com.embabel.agent.mcpserver.domain.McpExecutionMode
 import com.embabel.agent.mcpserver.domain.ServerInfo
 import com.embabel.agent.mcpserver.domain.ToolSpecification
@@ -318,7 +319,8 @@ class UnifiedBannerTool(private val serverInfo: ServerInfo) {
      *
      * @return a map containing banner details
      */
-    @Tool(
+    @LlmTool(
+        name = "helloBanner",
         description = "Display a welcome banner with server information"
     )
     fun helloBanner(): Map<String, Any> {

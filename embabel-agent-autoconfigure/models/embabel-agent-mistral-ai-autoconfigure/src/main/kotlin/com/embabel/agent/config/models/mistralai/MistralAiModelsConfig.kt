@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,12 @@
 package com.embabel.agent.config.models.mistralai
 
 import com.embabel.agent.api.models.MistralAiModels
+import com.embabel.agent.spi.LlmService
 import com.embabel.agent.spi.common.RetryProperties
+import com.embabel.agent.spi.support.springai.SpringAiLlmService
 import com.embabel.common.ai.autoconfig.LlmAutoConfigMetadataLoader
 import com.embabel.common.ai.autoconfig.ProviderInitialization
 import com.embabel.common.ai.autoconfig.RegisteredModel
-import com.embabel.common.ai.model.Llm
 import com.embabel.common.ai.model.LlmOptions
 import com.embabel.common.ai.model.OptionsConverter
 import com.embabel.common.ai.model.PerTokenPricingModel
@@ -46,6 +47,16 @@ import org.springframework.web.reactive.function.client.WebClient
  */
 @ConfigurationProperties(prefix = "embabel.agent.platform.models.mistralai")
 class MistralAiProperties : RetryProperties {
+    /**
+     * Base URL for Mistral AI API requests.
+     */
+    var baseUrl: String? = null
+
+    /**
+     * API key for authenticating with Mistral AI services.
+     */
+    var apiKey: String? = null
+
     /**
      * Maximum number of attempts.
      */
@@ -75,16 +86,20 @@ class MistralAiProperties : RetryProperties {
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(MistralAiProperties::class)
 class MistralAiModelsConfig(
-    @param:Value("\${MISTRAL_BASE_URL:}")
-    private val baseUrl: String,
-    @param:Value("\${MISTRAL_API_KEY}")
-    private val apiKey: String,
+    @param:Value("\${MISTRAL_BASE_URL:#{null}}")
+    private val envBaseUrl: String?,
+    @param:Value("\${MISTRAL_API_KEY:#{null}}")
+    private val envApiKey: String?,
     private val properties: MistralAiProperties,
     private val observationRegistry: ObjectProvider<ObservationRegistry>,
     private val configurableBeanFactory: ConfigurableBeanFactory,
     private val modelLoader: LlmAutoConfigMetadataLoader<MistralAiModelDefinitions> = MistralAiModelLoader(),
 ) {
     private val logger = LoggerFactory.getLogger(MistralAiModelsConfig::class.java)
+
+    private val baseUrl: String? = envBaseUrl ?: properties.baseUrl
+    private val apiKey: String = envApiKey ?: properties.apiKey
+    ?: error("Mistral AI API key required: set MISTRAL_API_KEY env var or embabel.agent.platform.models.mistralai.api-key")
 
     init {
         logger.info("Mistral AI models are available: {}", properties)
@@ -126,8 +141,8 @@ class MistralAiModelsConfig(
     /**
      * Creates an individual Mistral AI model from configuration.
      */
-    private fun createMistralAiLlm(modelDef: MistralAiModelDefinition): Llm {
-        val chatModel = MistralAiChatModel
+    private fun createMistralAiLlm(modelDef: MistralAiModelDefinition): LlmService<*> {
+        val mistralChatModel = MistralAiChatModel
             .builder()
             .defaultOptions(createDefaultOptions(modelDef))
             .mistralAiApi(createMistralAiApi())
@@ -140,9 +155,9 @@ class MistralAiModelsConfig(
             .observationRegistry(observationRegistry.getIfUnique { ObservationRegistry.NOOP })
             .build()
 
-        return Llm(
+        return SpringAiLlmService(
             name = modelDef.modelId,
-            model = chatModel,
+            chatModel = mistralChatModel,
             provider = MistralAiModels.PROVIDER,
             optionsConverter = MistralAiOptionsConverter,
             knowledgeCutoffDate = modelDef.knowledgeCutoffDate,
@@ -171,7 +186,7 @@ class MistralAiModelsConfig(
 
     private fun createMistralAiApi(): MistralAiApi {
         val builder = MistralAiApi.builder().apiKey(apiKey)
-        if (baseUrl.isNotBlank()) {
+        if (!baseUrl.isNullOrBlank()) {
             logger.info("Using custom Mistral AI base URL: {}", baseUrl)
             builder.baseUrl(baseUrl)
         }

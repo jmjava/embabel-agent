@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import com.embabel.agent.rag.service.RagRequest
 import com.embabel.agent.rag.service.RagResponse
 import com.embabel.agent.rag.service.RagService
 import com.embabel.common.ai.model.EmbeddingService
+import com.embabel.common.ai.model.SpringAiEmbeddingService
 import com.embabel.common.test.ai.FakeEmbeddingModel
 import com.embabel.common.util.indent
 import org.springframework.context.annotation.Bean
@@ -32,7 +33,7 @@ class FakeEmbeddingConfig {
 
     @Bean
     fun fakeEmbeddingService(): EmbeddingService {
-        return EmbeddingService("test", "test-provider", FakeEmbeddingModel())
+        return SpringAiEmbeddingService("test", "test-provider", FakeEmbeddingModel())
     }
 }
 

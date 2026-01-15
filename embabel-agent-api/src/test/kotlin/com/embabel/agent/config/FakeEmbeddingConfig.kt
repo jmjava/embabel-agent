@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,17 +16,49 @@
 package com.embabel.agent.config
 
 import com.embabel.common.ai.model.EmbeddingService
-import com.embabel.common.test.ai.FakeEmbeddingModel
+import com.embabel.common.ai.model.SpringAiEmbeddingService
+import com.embabel.common.util.generateRandomFloatArray
+import org.springframework.ai.document.Document
+import org.springframework.ai.embedding.Embedding
+import org.springframework.ai.embedding.EmbeddingModel
+import org.springframework.ai.embedding.EmbeddingRequest
+import org.springframework.ai.embedding.EmbeddingResponse
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Profile
+import java.util.*
 
 @Configuration
 @Profile("test")
 class FakeEmbeddingConfig {
 
     @Bean
-    fun fakeEmbeddingService(): EmbeddingService {
-        return EmbeddingService("test", "test-provider", FakeEmbeddingModel())
+    fun textEmbedding3Small(): EmbeddingService {
+        return SpringAiEmbeddingService(
+            name = "text-embedding-3-small",
+            provider = "OpenAI",
+            model = FakeEmbeddingModel()
+        )
+    }
+}
+
+private data class FakeEmbeddingModel(
+    val dimensions: Int = 1536,
+) : EmbeddingModel {
+
+    override fun embed(document: Document): FloatArray {
+        return generateRandomFloatArray(dimensions)
+    }
+
+    override fun embed(texts: List<String>): MutableList<FloatArray> {
+        return texts.map { generateRandomFloatArray(dimensions) }.toMutableList()
+    }
+
+    override fun call(request: EmbeddingRequest): EmbeddingResponse {
+        val output = LinkedList<Embedding>()
+        for (i in request.instructions.indices) {
+            output.add(Embedding(generateRandomFloatArray(dimensions), i))
+        }
+        return EmbeddingResponse(output)
     }
 }

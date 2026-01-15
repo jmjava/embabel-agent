@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,11 +15,13 @@
  */
 package com.embabel.agent.api.annotation.support
 
+import com.embabel.agent.api.annotation.State
 import com.embabel.agent.api.annotation.Action as ActionAnnotation
 import com.embabel.agent.api.common.TransformationActionContext
+import com.embabel.agent.api.tool.Tool
 import com.embabel.agent.core.Action
 import com.embabel.agent.core.IoBinding
-import org.springframework.ai.tool.ToolCallback
+import com.embabel.agent.core.ToolGroupRequirement
 import java.lang.reflect.Method
 
 /**
@@ -46,13 +48,13 @@ interface ActionMethodManager {
      * Create an Action from a method
      * @param method the method to create an action from
      * @param instance instance of Agent or AgentCapabilities-annotated class
-     * @param toolCallbacksOnInstance tool callbacks to use from instance level
+     * @param toolsOnInstance tools to use from instance level
      * @param costMethods map of cost method name to CostMethodInfo for dynamic cost/value computation
      */
     fun createAction(
         method: Method,
         instance: Any,
-        toolCallbacksOnInstance: List<ToolCallback>,
+        toolsOnInstance: List<Tool>,
         costMethods: Map<String, CostMethodInfo> = emptyMap(),
     ): Action
 
@@ -85,3 +87,60 @@ internal fun findTriggerType(method: Method): Class<*>? {
  */
 internal fun triggerPrecondition(triggerType: Class<*>): String =
     "${IoBinding.LAST_RESULT_BINDING}:${triggerType.name}"
+
+/**
+ * Check if a class is a @State type.
+ * Respects inheritance - returns true if the class itself, any of its
+ * superclasses, or any implemented interfaces has the @State annotation.
+ */
+internal fun isStateType(clazz: Class<*>): Boolean {
+    val visited = mutableSetOf<Class<*>>()
+    return isStateTypeRecursive(clazz, visited)
+}
+
+private fun isStateTypeRecursive(clazz: Class<*>?, visited: MutableSet<Class<*>>): Boolean {
+    if (clazz == null || clazz == Any::class.java || !visited.add(clazz)) {
+        return false
+    }
+    if (clazz.isAnnotationPresent(State::class.java)) {
+        return true
+    }
+    // Check superclass
+    if (isStateTypeRecursive(clazz.superclass, visited)) {
+        return true
+    }
+    // Check all interfaces
+    for (iface in clazz.interfaces) {
+        if (isStateTypeRecursive(iface, visited)) {
+            return true
+        }
+    }
+    return false
+}
+
+/**
+ * Compute whether an action should clear the blackboard.
+ * Returns true if the method returns a @State type or if explicitly set in annotation.
+ */
+internal fun computeClearBlackboard(method: Method, actionAnnotation: ActionAnnotation): Boolean =
+    isStateType(method.returnType) || actionAnnotation.clearBlackboard
+
+/**
+ * Compute trigger preconditions for an action method.
+ * Returns a list containing the trigger precondition if @Action.trigger is set.
+ */
+internal fun computeTriggerPreconditions(method: Method): List<String> {
+    val triggerType = findTriggerType(method)
+    return if (triggerType != null) {
+        listOf(triggerPrecondition(triggerType))
+    } else {
+        emptyList()
+    }
+}
+
+/**
+ * Compute tool group requirements from an @Action annotation.
+ */
+internal fun computeToolGroups(actionAnnotation: ActionAnnotation): Set<ToolGroupRequirement> =
+    (actionAnnotation.toolGroupRequirements.map { ToolGroupRequirement(it.role) } +
+            actionAnnotation.toolGroups.map { ToolGroupRequirement(it) }).toSet()

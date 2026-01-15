@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ interface AgentScopeBuilder {
     /**
      * Emit an AgentScope
      */
-    fun build(): AgentScope
+    fun createAgentScope(): AgentScope
 
     companion object {
 
@@ -54,7 +54,7 @@ private class FromInstanceAgentScopeBuilder(
     private val instance: Any,
 ) : AgentScopeBuilder {
 
-    override fun build(): AgentScope {
+    override fun createAgentScope(): AgentScope {
         return AgentMetadataReader().createAgentMetadata(instance)
             ?: throw IllegalArgumentException("$instance does not have agent metadata: @Agent or @EmbabelComponent annotation required")
     }
@@ -64,7 +64,7 @@ private class FromInstancesAgentScopeBuilder(
     private val instances: List<Any>,
 ) : AgentScopeBuilder {
 
-    override fun build(): AgentScope {
+    override fun createAgentScope(): AgentScope {
         val reader = AgentMetadataReader()
         val scopes = instances.map { instance ->
             reader.createAgentMetadata(instance)
@@ -85,7 +85,7 @@ private class FromPlatformAgentScopeBuilder(
     private val agentPlatform: AgentPlatform,
 ) : AgentScopeBuilder {
 
-    override fun build(): AgentScope {
+    override fun createAgentScope(): AgentScope {
         return agentPlatform
     }
 }

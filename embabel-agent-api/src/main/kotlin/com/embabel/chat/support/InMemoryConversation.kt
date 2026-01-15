@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,4 +49,10 @@ class InMemoryConversation private constructor(
 
     override fun persistent(): Boolean = persistent
 
+    override fun last(n: Int): Conversation =
+        InMemoryConversation(
+            id = this.id,
+            persistent = false,
+            _messages = this._messages.takeLast(n).toMutableList(),
+        )
 }

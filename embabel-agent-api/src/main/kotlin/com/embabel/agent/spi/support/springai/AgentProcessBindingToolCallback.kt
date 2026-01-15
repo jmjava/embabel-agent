@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,14 @@
 package com.embabel.agent.spi.support.springai
 
 import com.embabel.agent.core.AgentProcess
+import org.springframework.ai.chat.model.ToolContext
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.definition.ToolDefinition
 
 /**
  * Bind AgentProcess to ToolContext for use in tool callbacks.
  */
-class AgentProcessBindingToolCallback(
+internal class AgentProcessBindingToolCallback(
     private val delegate: ToolCallback,
     private val agentProcess: AgentProcess,
 ) : ToolCallback {
@@ -42,5 +43,13 @@ class AgentProcessBindingToolCallback(
                 AgentProcess.remove()
             }
         }
+    }
+
+    /**
+     * Override to avoid Spring AI's default warning about unused ToolContext.
+     * Embabel manages context through [AgentProcess] thread-local rather than Spring AI's ToolContext.
+     */
+    override fun call(toolInput: String, toolContext: ToolContext?): String {
+        return call(toolInput)
     }
 }

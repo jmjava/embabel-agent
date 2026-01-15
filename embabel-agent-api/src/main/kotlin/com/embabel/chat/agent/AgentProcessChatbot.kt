@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -165,10 +165,10 @@ private class AgentProcessChatSession(
         conversation.addMessage(userMessage)
         agentProcess.addObject(userMessage)
         val agentProcessRun = agentProcess.run()
-        loggerFor<AgentProcessChatSession>().info(
+        loggerFor<AgentProcessChatSession>().debug(
             "Agent process {} run completed with status {}",
             agentProcess.id,
-            agentProcessRun.status
+            agentProcessRun.status,
         )
     }
 

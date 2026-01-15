@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,6 +58,22 @@ sealed interface DomainType : HasInfoString, NamedAndDescribed {
         }
 
     /**
+     * Value properties defined on this type and inherited ones
+     */
+    @get:JsonIgnore
+    val values: List<ValuePropertyDefinition>
+        get() =
+            properties.filterIsInstance<ValuePropertyDefinition>()
+
+    /**
+     * All relationship properties defined on this type and inherited ones
+     */
+    @get:JsonIgnore
+    val relationships: List<DomainTypePropertyDefinition>
+        get() =
+            properties.filterIsInstance<DomainTypePropertyDefinition>()
+
+    /**
      * Properties defined on this type only (not inherited)
      */
     val ownProperties: List<PropertyDefinition>
@@ -101,6 +117,7 @@ sealed interface DomainType : HasInfoString, NamedAndDescribed {
 
     /**
      * Get the label for this type only (not including parent labels)
+     * This will avoid long FQNs which are not useful for labeling.
      */
     @get:JsonIgnore
     val ownLabel: String
@@ -133,25 +150,45 @@ enum class Cardinality {
     use = JsonTypeInfo.Id.SIMPLE_NAME,
 )
 @JsonSubTypes(
-    JsonSubTypes.Type(value = SimplePropertyDefinition::class, name = "simple"),
+    JsonSubTypes.Type(value = ValuePropertyDefinition::class, name = "simple"),
     JsonSubTypes.Type(value = DomainTypePropertyDefinition::class, name = "domain"),
 )
 sealed interface PropertyDefinition {
     val name: String
     val description: String
     val cardinality: Cardinality
+
+    /**
+     * Semantic metadata for this property.
+     * Populated from [@Semantics] annotation on the field.
+     * Keys and values are strings; common keys include:
+     * - `predicate`: Natural language predicate (e.g., "works at")
+     * - `inverse`: Inverse predicate (e.g., "employs")
+     * - `aliases`: Comma-separated alternative phrasings
+     */
+    val metadata: Map<String, String>
 }
 
-data class SimplePropertyDefinition(
+/**
+ * Simple value property, such as string, int, boolean, etc.
+ * Not necessarily a scalar, as cardinality may be LIST or SET.
+ */
+data class ValuePropertyDefinition @JvmOverloads constructor(
     override val name: String,
     val type: String = "string",
     override val cardinality: Cardinality = Cardinality.ONE,
     override val description: String = name,
+    override val metadata: Map<String, String> = emptyMap(),
 ) : PropertyDefinition
 
-data class DomainTypePropertyDefinition(
+/**
+ * Property that holds a nested DomainType
+ * Represents a relationship to another domain object
+ */
+data class DomainTypePropertyDefinition @JvmOverloads constructor(
     override val name: String,
     val type: DomainType,
     override val cardinality: Cardinality = Cardinality.ONE,
     override val description: String = name,
+    override val metadata: Map<String, String> = emptyMap(),
 ) : PropertyDefinition

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,11 @@
 package com.embabel.agent.api.common.support.streaming
 
 import com.embabel.agent.api.common.InteractionId
-import com.embabel.agent.spi.LlmInteraction
+import com.embabel.agent.api.common.support.streaming.StreamingCapabilityDetector.supportsStreaming
+import com.embabel.agent.core.support.LlmInteraction
 import com.embabel.agent.spi.LlmOperations
 import com.embabel.agent.spi.support.springai.ChatClientLlmOperations
+import com.embabel.agent.spi.support.springai.SpringAiLlmService
 import com.embabel.common.ai.model.LlmOptions
 import com.embabel.common.util.loggerFor
 import org.springframework.ai.chat.messages.UserMessage
@@ -77,7 +79,8 @@ internal object StreamingCapabilityDetector {
             )
         )
 
-        return supportsStreaming(llm.model)
+        val springAiLlm = llm as? SpringAiLlmService ?: return false
+        return supportsStreaming(springAiLlm.chatModel)
 
     }
 

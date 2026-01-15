@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,11 @@ package com.embabel.agent.spi.support.springai.streaming
 
 import com.embabel.agent.core.Action
 import com.embabel.agent.core.AgentProcess
-import com.embabel.agent.spi.LlmInteraction
+import com.embabel.agent.core.support.LlmInteraction
 import com.embabel.agent.spi.streaming.StreamingLlmOperations
 import com.embabel.agent.spi.support.springai.ChatClientLlmOperations
+import com.embabel.agent.spi.support.springai.SpringAiLlmService
 import com.embabel.chat.UserMessage
-import com.embabel.common.ai.model.Llm
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.mockk.every
 import io.mockk.mockk
@@ -57,7 +57,7 @@ class StreamingChatClientOperationsTest {
 
     private val logger = LoggerFactory.getLogger(StreamingChatClientOperationsTest::class.java)
     private lateinit var mockChatClientLlmOperations: ChatClientLlmOperations
-    private lateinit var mockLlm: Llm
+    private lateinit var mockLlm: SpringAiLlmService
     private lateinit var mockChatClient: ChatClient
     private lateinit var mockInteraction: LlmInteraction
     private lateinit var mockAgentProcess: AgentProcess
@@ -67,7 +67,7 @@ class StreamingChatClientOperationsTest {
     @BeforeEach
     fun setUp() {
         mockChatClientLlmOperations = mockk(relaxed = true)
-        mockLlm = mockk(relaxed = true)
+        mockLlm = mockk<SpringAiLlmService>(relaxed = true)
         mockChatClient = mockk<ChatClient>(relaxed = true)
         mockInteraction = mockk(relaxed = true)
         mockAgentProcess = mockk(relaxed = true)
@@ -78,10 +78,11 @@ class StreamingChatClientOperationsTest {
         every { mockChatClientLlmOperations.createChatClient(mockLlm) } returns mockChatClient
         every { mockInteraction.promptContributors } returns emptyList()
         every { mockLlm.promptContributors } returns emptyList()
-        every { mockLlm.optionsConverter } returns mockk(relaxed = true)
-        every { mockLlm.optionsConverter.convertOptions(any()) } returns mockk(relaxed = true)
+        val mockOptionsConverter = mockk<com.embabel.common.ai.model.OptionsConverter<*>>(relaxed = true)
+        every { mockLlm.optionsConverter } returns mockOptionsConverter
+        every { mockOptionsConverter.convertOptions(any()) } returns mockk(relaxed = true)
         every { mockInteraction.llm } returns mockk(relaxed = true)
-        every { mockInteraction.toolCallbacks } returns emptyList()
+        every { mockInteraction.tools } returns emptyList()
         every { mockChatClientLlmOperations.objectMapper } returns jacksonObjectMapper()
         every { mockInteraction.propertyFilter } returns { true }
 

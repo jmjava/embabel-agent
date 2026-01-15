@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ package com.embabel.agent.api.common.support.streaming
 
 import com.embabel.agent.core.Action
 import com.embabel.agent.core.AgentProcess
-import com.embabel.agent.spi.LlmInteraction
+import com.embabel.agent.core.support.LlmInteraction
 import com.embabel.agent.spi.streaming.StreamingLlmOperations
 import com.embabel.chat.Message
 import com.embabel.chat.UserMessage
@@ -157,7 +157,7 @@ class StreamingPromptRunnerOperationsImplTest {
             mockStreamingLlmOperations.createObjectStream(
                 match { messages ->
                     messages.size == 1 &&
-                    (messages[0] as UserMessage).content == newPrompt
+                            (messages[0] as UserMessage).content == newPrompt
                 },
                 mockInteraction,
                 outputClass,
@@ -187,7 +187,7 @@ class StreamingPromptRunnerOperationsImplTest {
             mockStreamingLlmOperations.createObjectStream(
                 match { messages ->
                     messages.size == 1 && // withMessages replaces, doesn't append
-                    (messages[0] as UserMessage).content == "Additional"
+                            (messages[0] as UserMessage).content == "Additional"
                 },
                 mockInteraction,
                 outputClass,

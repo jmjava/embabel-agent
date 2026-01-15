@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,7 +57,9 @@ class RegistryToolGroupResolver(
     }
 
     override fun findToolGroupForTool(toolName: String): ToolGroupResolution {
-        val group = toolGroups.find { it.toolCallbacks.map { it.toolDefinition.name() }.contains(toolName) }
+        val group = toolGroups.find { tg ->
+            tg.tools.any { it.definition.name == toolName }
+        }
         return if (group == null) {
             ToolGroupResolution(
                 resolvedToolGroup = null,

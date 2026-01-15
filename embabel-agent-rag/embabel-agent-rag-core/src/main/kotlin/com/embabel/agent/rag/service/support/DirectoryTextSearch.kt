@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,6 +56,10 @@ class DirectoryTextSearch @JvmOverloads constructor(
     private val directory: String,
     private val config: Config = Config(),
 ) : TextSearch, RegexSearchOperations {
+
+    override fun supportsType(type: String): Boolean {
+        return type == Chunk::class.java.simpleName
+    }
 
     /**
      * Configuration for [DirectoryTextSearch].

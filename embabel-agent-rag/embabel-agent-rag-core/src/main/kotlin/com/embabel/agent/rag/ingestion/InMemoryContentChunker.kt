@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,15 +25,17 @@ import com.embabel.agent.rag.ingestion.ContentChunker.Companion.LEAF_SECTION_URL
 import com.embabel.agent.rag.ingestion.ContentChunker.Companion.ROOT_DOCUMENT_ID
 import com.embabel.agent.rag.ingestion.ContentChunker.Companion.SEQUENCE_NUMBER
 import com.embabel.agent.rag.ingestion.ContentChunker.Companion.TOTAL_CHUNKS
-import com.embabel.agent.rag.model.Chunk
-import com.embabel.agent.rag.model.ContentRoot
-import com.embabel.agent.rag.model.LeafSection
-import com.embabel.agent.rag.model.NavigableContainerSection
+import com.embabel.agent.rag.model.*
 import org.slf4j.LoggerFactory
 import java.util.*
 
+/**
+ * Simple implementation of ContentChunker that operates in memory.
+ * Will whole entire document in memory.
+ */
 class InMemoryContentChunker(
-    val config: ContentChunker.Config = ContentChunker.DefaultConfig(),
+    val config: ContentChunker.Config = ContentChunker.Config(),
+    override val chunkTransformer: ChunkTransformer = ChunkTransformer.NO_OP,
 ) : ContentChunker {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -49,21 +51,39 @@ class InMemoryContentChunker(
             section.metadata[ROOT_DOCUMENT_ID] as? String ?: section.id
         }
 
+        // Determine the document for transformation context
+        val document = section as? ContentRoot
+
         // Strategy 1: If total content fits in a single chunk, combine everything
-        if (totalContentLength <= config.maxChunkSize) {
+        val chunks = if (totalContentLength <= config.maxChunkSize) {
             logger.debug(
                 "Creating single chunk for container section '{}' with {} leaves (total length: {} <= max: {})",
                 section.title, leaves.size, totalContentLength, config.maxChunkSize
             )
-            return listOf(createSingleChunkFromContainer(section, leaves, rootId))
+            listOf(createSingleChunkFromContainer(section, leaves, rootId))
+        } else {
+            // Strategy 2: Try to group leaves intelligently before splitting
+            logger.debug(
+                "Total content ({} chars) exceeds maxChunkSize ({}), attempting intelligent grouping",
+                totalContentLength, config.maxChunkSize
+            )
+            chunkLeavesIntelligently(section, leaves, rootId)
         }
 
-        // Strategy 2: Try to group leaves intelligently before splitting
-        logger.debug(
-            "Total content ({} chars) exceeds maxChunkSize ({}), attempting intelligent grouping",
-            totalContentLength, config.maxChunkSize
-        )
-        return chunkLeavesIntelligently(section, leaves, rootId)
+        // Apply transformer if configured
+        return applyTransformer(chunks, section, document)
+    }
+
+    /**
+     * Apply the configured chunk transformer to all chunks.
+     */
+    private fun applyTransformer(
+        chunks: List<Chunk>,
+        section: Section,
+        document: ContentRoot?,
+    ): List<Chunk> {
+        val context = ChunkTransformationContext(section = section, document = document)
+        return chunks.map { chunk -> chunkTransformer.transform(chunk, context) }
     }
 
     /**
@@ -82,8 +102,6 @@ class InMemoryContentChunker(
             if (leaf.title.isNotBlank()) "${leaf.title}\n${leaf.content}" else leaf.content
         }.trim()
 
-        val contentWithSectionTitle = prependSectionTitle(combinedContent, section.title)
-
         val combinedMetadata = mutableMapOf<String, Any?>()
         combinedMetadata.putAll(section.metadata)
         combinedMetadata[ROOT_DOCUMENT_ID] = rootId
@@ -96,7 +114,7 @@ class InMemoryContentChunker(
 
         return Chunk.Companion(
             id = UUID.randomUUID().toString(),
-            text = contentWithSectionTitle,
+            text = combinedContent,
             metadata = combinedMetadata,
             parentId = section.id
         )
@@ -189,8 +207,6 @@ class InMemoryContentChunker(
             if (leaf.title.isNotBlank()) "${leaf.title}\n${leaf.content}" else leaf.content
         }.trim()
 
-        val contentWithSectionTitle = prependSectionTitle(combinedContent, containerSection.title)
-
         val combinedMetadata = mutableMapOf<String, Any?>()
         combinedMetadata.putAll(containerSection.metadata)
         combinedMetadata[ROOT_DOCUMENT_ID] = rootId
@@ -203,7 +219,7 @@ class InMemoryContentChunker(
 
         return Chunk.Companion(
             id = UUID.randomUUID().toString(),
-            text = contentWithSectionTitle,
+            text = combinedContent,
             metadata = combinedMetadata,
             parentId = containerSection.id
         )
@@ -216,11 +232,10 @@ class InMemoryContentChunker(
         sequenceNumber: Int,
     ): Chunk {
         val content = if (leaf.title.isNotBlank()) "${leaf.title}\n${leaf.content}" else leaf.content
-        val contentWithSectionTitle = prependSectionTitle(content.trim(), containerSection.title)
 
         return Chunk.Companion(
             id = UUID.randomUUID().toString(),
-            text = contentWithSectionTitle,
+            text = content.trim(),
             metadata = leaf.metadata + mapOf(
                 ROOT_DOCUMENT_ID to rootId,
                 CONTAINER_SECTION_ID to containerSection.id,
@@ -244,9 +259,7 @@ class InMemoryContentChunker(
     ): List<Chunk> {
         val chunks = mutableListOf<Chunk>()
         val fullContent = if (leaf.title.isNotBlank()) "${leaf.title}\n${leaf.content}" else leaf.content
-        // Prepend section title before splitting, so it's only in the first chunk and accounted for in size
-        val contentWithSectionTitle = prependSectionTitle(fullContent.trim(), containerSection.title)
-        val textChunks = splitText(contentWithSectionTitle).filter { it.trim().isNotEmpty() }
+        val textChunks = splitText(fullContent.trim()).filter { it.trim().isNotEmpty() }
 
         logger.debug("Split leaf section '{}' into {} text chunks", leaf.title, textChunks.size)
 
@@ -422,26 +435,6 @@ class InMemoryContentChunker(
                 ""
             }
         }
-    }
-
-    private fun prependSectionTitle(
-        content: String,
-        sectionTitle: String,
-    ): String {
-        // Don't prepend if config is false, section title is blank, or content is empty
-        if (!config.includeSectionTitleInChunk || sectionTitle.isBlank() || content.isBlank()) {
-            return content
-        }
-
-        val titleWithSeparator = "FROM: $sectionTitle\n\n"
-        val resultLength = titleWithSeparator.length + content.length
-
-        // Don't prepend if it would cause the chunk to exceed maxChunkSize
-        if (resultLength > config.maxChunkSize) {
-            return content
-        }
-
-        return titleWithSeparator + content
     }
 
 }

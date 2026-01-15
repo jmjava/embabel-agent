@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package com.embabel.agent.test.integration
 import com.embabel.agent.api.event.LlmRequestEvent
 import com.embabel.agent.core.Action
 import com.embabel.agent.core.AgentProcess
-import com.embabel.agent.spi.LlmInteraction
+import com.embabel.agent.core.support.LlmInteraction
 import com.embabel.agent.spi.LlmOperations
 import com.embabel.chat.Message
 import com.embabel.common.util.DummyInstanceCreator

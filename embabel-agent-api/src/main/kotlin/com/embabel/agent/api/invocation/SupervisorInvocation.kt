@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -101,7 +101,7 @@ data class SupervisorInvocation<T : Any> @JvmOverloads constructor(
      * to orchestrate them toward the goal.
      */
     fun createSupervisorAgent(): Agent {
-        val scope = agentScopeBuilder.build()
+        val scope = agentScopeBuilder.createAgentScope()
 
         // Get all actions from the scope (excluding any existing goal actions)
         val allActions = scope.actions.toList()

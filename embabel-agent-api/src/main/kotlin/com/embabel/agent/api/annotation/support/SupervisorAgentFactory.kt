@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,10 +20,7 @@ import com.embabel.agent.api.tool.Tool
 import com.embabel.agent.core.*
 import com.embabel.agent.core.support.AbstractAction
 import com.embabel.agent.core.support.Rerun
-import com.embabel.agent.spi.LlmInteraction
-import com.embabel.agent.spi.support.springai.AgentProcessBindingToolCallback
-import com.embabel.agent.spi.support.springai.toSpringToolCallbacks
-import com.embabel.chat.UserMessage
+import com.embabel.agent.core.support.LlmInteraction
 import com.embabel.common.core.types.Semver
 import org.slf4j.LoggerFactory
 import com.embabel.agent.core.Agent as CoreAgent
@@ -242,15 +239,10 @@ class SupervisorAction(
                 // Build prompt with current state and updated tools
                 val prompt = buildSupervisorPrompt(processContext, curriedTools, iteration)
 
-                // Convert to Spring AI ToolCallbacks and wrap with AgentProcess binding
-                val toolCallbacks = curriedTools.toSpringToolCallbacks().map { callback ->
-                    AgentProcessBindingToolCallback(callback, processContext.agentProcess)
-                }
-
                 // Create interaction with tools
                 val interaction = LlmInteraction(
                     id = InteractionId("$name-supervisor-$iteration"),
-                    toolCallbacks = toolCallbacks,
+                    tools = curriedTools,
                 )
 
                 // Execute with tools
@@ -284,7 +276,7 @@ class SupervisorAction(
             if (goalOutputType != null) {
                 val blackboardModel = processContext.blackboard.expressionEvaluationModel()
                 val goalOutput = blackboardModel.values.find { value ->
-                    value != null && value::class.java.name == goalOutputType
+                    value::class.java.name == goalOutputType
                 }
                 if (goalOutput != null) {
                     logger.info("Goal output found on blackboard: {}", goalOutput)
@@ -300,7 +292,7 @@ class SupervisorAction(
         if (goalOutputType == null) return false
         val blackboardModel = processContext.blackboard.expressionEvaluationModel()
         return blackboardModel.values.any { value ->
-            value != null && value::class.java.name == goalOutputType
+            value::class.java.name == goalOutputType
         }
     }
 

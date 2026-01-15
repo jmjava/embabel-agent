@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,24 +28,25 @@ import com.embabel.agent.rag.model.NavigableContainerSection
  */
 interface ContentChunker {
 
-    interface Config {
-        val maxChunkSize: Int
-        val overlapSize: Int
-        val includeSectionTitleInChunk: Boolean
-    }
+    val chunkTransformer: ChunkTransformer
 
     /**
-     * Configuration for the splitter
+     * Content chunking configuration
+     * @property maxChunkSize Maximum size of each chunk in characters
+     * @property overlapSize Number of overlapping characters between consecutive chunks
+     * @property embeddingBatchSize Number of chunks to process in a single embedding batch
      */
-    data class DefaultConfig @JvmOverloads constructor(
-        override val maxChunkSize: Int = 1500,
-        override val overlapSize: Int = 200,
-        override val includeSectionTitleInChunk: Boolean = true,
-    ) : Config {
+    data class Config(
+        val maxChunkSize: Int = 1500,
+        val overlapSize: Int = 200,
+        val embeddingBatchSize: Int = 100,
+    ) {
+
         init {
             require(maxChunkSize > 0) { "maxChunkSize must be positive" }
             require(overlapSize >= 0) { "overlapSize must be non-negative" }
             require(overlapSize < maxChunkSize) { "overlapSize must be < maxChunkSize" }
+            require(embeddingBatchSize > 0) { "embeddingBatchSize must be positive" }
         }
     }
 
@@ -90,7 +91,13 @@ interface ContentChunker {
         /** Metadata key for the URI/URL of the leaf section */
         const val LEAF_SECTION_URL = "leaf_section_url"
 
-        operator fun invoke(config: Config = DefaultConfig()) =
-            InMemoryContentChunker(config)
+        /**
+         * Factory method to create an InMemoryContentChunker.
+         */
+        operator fun invoke(
+            config: Config,
+            chunkTransformer: ChunkTransformer,
+        ) =
+            InMemoryContentChunker(config, chunkTransformer)
     }
 }

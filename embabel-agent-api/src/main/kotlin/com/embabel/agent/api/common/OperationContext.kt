@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,11 +21,11 @@ import com.embabel.agent.api.event.AgenticEventListener
 import com.embabel.agent.api.identity.User
 import com.embabel.agent.api.invocation.AgentInvocation
 import com.embabel.agent.core.*
+import com.embabel.common.ai.model.EmbeddingService
 import com.embabel.common.ai.model.LlmOptions
 import com.embabel.common.ai.model.ModelSelectionCriteria
 import com.embabel.common.ai.prompt.CurrentDate
 import com.embabel.common.ai.prompt.PromptContributor
-import org.springframework.ai.embedding.EmbeddingModel
 import java.util.concurrent.CompletableFuture
 
 /**
@@ -228,10 +228,10 @@ internal class OperationContextAi(
     private val context: OperationContext,
 ) : Ai {
 
-    override fun withEmbeddingModel(criteria: ModelSelectionCriteria): EmbeddingModel {
+    override fun withEmbeddingService(criteria: ModelSelectionCriteria): EmbeddingService {
         return context.processContext.platformServices.modelProvider().getEmbeddingService(
             criteria
-        ).model
+        )
     }
 
     override fun withLlm(llm: LlmOptions): PromptRunner {

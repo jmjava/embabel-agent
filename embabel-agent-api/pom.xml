@@ -4,10 +4,10 @@
     <parent>
         <groupId>com.embabel.agent</groupId>
         <artifactId>embabel-agent-parent</artifactId>
-        <version>0.3.1-SNAPSHOT</version>
+        <version>0.3.3-SNAPSHOT</version>
     </parent>
     <artifactId>embabel-agent-api</artifactId>
-    <version>0.3.1-SNAPSHOT</version>
+    <version>0.3.3-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>Embabel Agent API</name>
     <description>Fluent DSL and Kotlin DSL for Agentic Flows</description>
@@ -40,13 +40,7 @@
 
         <dependency>
             <groupId>com.embabel.agent</groupId>
-            <artifactId>embabel-agent-domain</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>com.embabel.agent</groupId>
-            <artifactId>embabel-agent-test-domain</artifactId>
-            <scope>test</scope>
+            <artifactId>embabel-agent-common</artifactId>
         </dependency>
 
         <dependency>
@@ -57,11 +51,6 @@
         <dependency>
             <groupId>com.embabel.common</groupId>
             <artifactId>embabel-common-util</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>com.embabel.common</groupId>
-            <artifactId>embabel-common-ai</artifactId>
         </dependency>
 
         <dependency>
@@ -137,15 +126,15 @@
         <dependency>
             <groupId>io.github.a2asdk</groupId>
             <artifactId>a2a-java-sdk-spec</artifactId>
-            <version>0.2.5</version>
+            <version>0.3.2.Final</version>
         </dependency>
 
         <!-- Unit and Integration Testing -->
         <!-- Most common testing dependencies are in the embabel-agent-parent -->
         <!-- If something is missing, add it here -->
         <dependency>
-            <groupId>com.embabel.common</groupId>
-            <artifactId>embabel-common-test-ai</artifactId>
+            <groupId>com.embabel.agent</groupId>
+            <artifactId>embabel-agent-test-common</artifactId>
             <scope>test</scope>
         </dependency>
 

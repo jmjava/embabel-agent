@@ -92,6 +92,49 @@ The `embabel-agent-rag-tika` module provides Apache Tika integration for parsing
 
 Embabel Agent uses a hierarchical content model that goes beyond traditional flat chunk storage:
 
+....
+Datum (sealed interface)
+│   Core: id, uri, metadata, labels()
+│
+├── ContentElement ─────────────────────────────────────┐
+│       Structural content (not embedded)               │
+│   ┌───────────────────────────────────────────────┐   │
+│   │ ContentRoot / NavigableDocument               │   │
+│   │     Documents with URI and title              │   │
+│   └───────────────────────────────────────────────┘   │
+│   ┌───────────────────────────────────────────────┐   │
+│   │ ContainerSection / LeafSection                │   │
+│   │     Hierarchical document sections            │   │
+│   └───────────────────────────────────────────────┘   │
+│                                                       │
+└── Retrievable ────────────────────────────────────────┤
+        Embeddable/searchable content                   │
+    ┌───────────────────────────────────────────────┐   │
+    │ Chunk                                         │   │
+    │     text, parentId, embedding                 │   │
+    │     Primary unit for vector search            │   │
+    └───────────────────────────────────────────────┘   │
+    ┌───────────────────────────────────────────────┐   │
+    │ NamedEntity                                   │   │
+    │     Domain entity contract (Person, Product)  │   │
+    │     name, description + domain properties     │   │
+    │                                               │   │
+    │   └── NamedEntityData                         │   │
+    │         Storage format with properties map    │   │
+    │         Hydration via toTypedInstance()       │   │
+    └───────────────────────────────────────────────┘   │
+                                                        │
+────────────────────────────────────────────────────────┘
+....
+
+**Key Design Points:**
+
+* `Datum` is the root sealed interface for all data objects
+* `ContentElement` branch contains structural content (documents, sections) that is NOT embedded
+* `Retrievable` branch contains searchable content with embeddings (chunks, entities)
+* `NamedEntity` is the domain contract for typed entities
+* `NamedEntityData` is the storage format with generic `properties` map and hydration support
+
 ===== Content Elements
 
 The `ContentElement` interface is the supertype for all content in the RAG system.
@@ -261,9 +304,337 @@ You might choose to do this if you provide a `ResultListener`
 that will collect queries and results for logging or analysis: for example, to track which queries were most useful for answering user questions and the complexity in terms of number of searches performed.
 This can be useful for implementing a learning feedback loop, for example to discern which queries performed badly, indicating that content such as documentation needs to be enhanced.
 
-****
-Some content here
-****
+===== Result Filtering
+
+In multi-tenant applications or scenarios where searches should be scoped to specific data subsets, `ToolishRag` supports **result filtering**.
+Filters are applied transparently to all searches—the LLM does not see or control them, ensuring security and data isolation.
+
+Embabel Agent provides two types of filters:
+
+- **Metadata Filters**: Filter on the `metadata` map of `Datum` objects (chunks, sections, etc.)
+- **Property Filters**: Filter on object properties of typed entities (e.g., fields of `NamedEntityData` or custom entity classes)
+
+Both use the same `PropertyFilter` type but are applied at different levels.
+
+====== Motivation
+
+Consider a document management system where:
+
+- Each document belongs to an owner (user or organization)
+- Some documents are shared reference data accessible to all users
+- The LLM should only search documents the current user is authorized to access
+
+Without filtering, you would need separate RAG stores per user or risk data leakage.
+With filtering, a single `ToolishRag` instance can be scoped per-request to the current user's data.
+
+====== Filter API
+
+Embabel Agent provides two filter interfaces for RAG searches:
+
+* **`PropertyFilter`**: Filters on map-based properties (metadata, entity properties)
+* **`EntityFilter`**: Extends `PropertyFilter` to add entity-specific filtering, particularly label-based filtering
+
+====== PropertyFilter
+
+The `PropertyFilter` sealed class hierarchy provides type-safe filter expressions for map-based properties:
+
+[cols="1,2,2"]
+|===
+|Filter Type |Description |Example
+
+|`Eq`
+|Equals
+|`PropertyFilter.eq("owner", "alice")`
+
+|`Ne`
+|Not equals
+|`PropertyFilter.ne("status", "deleted")`
+
+|`Gt`, `Gte`
+|Greater than (or equal)
+|`PropertyFilter.gte("score", 0.8)`
+
+|`Lt`, `Lte`
+|Less than (or equal)
+|`PropertyFilter.lt("priority", 5)`
+
+|`In`
+|Value in list
+|`PropertyFilter.in("category", "tech", "science")`
+
+|`Nin`
+|Value not in list
+|`PropertyFilter.nin("status", "deleted", "archived")`
+
+|`Contains`
+|String contains substring
+|`PropertyFilter.contains("tags", "important")`
+
+|`And`
+|Logical AND
+|`PropertyFilter.and(filter1, filter2)`
+
+|`Or`
+|Logical OR
+|`PropertyFilter.or(filter1, filter2)`
+
+|`Not`
+|Logical NOT
+|`PropertyFilter.not(filter)`
+|===
+
+====== EntityFilter
+
+`EntityFilter` extends `PropertyFilter` to add entity-specific filtering. Currently, it adds label-based filtering via `HasAnyLabel`:
+
+[cols="1,2,2"]
+|===
+|Filter Type |Description |Example
+
+|`HasAnyLabel`
+|Matches entities with any of the specified labels
+|`EntityFilter.hasAnyLabel("Person", "Organization")`
+|===
+
+`HasAnyLabel` is particularly useful for:
+
+* **Type-safe entity searches**: Filter results to only include specific entity types
+* **Multi-type queries**: Search across multiple entity types in one query
+
+[source,kotlin]
+----
+import com.embabel.agent.rag.filter.EntityFilter
+import com.embabel.agent.rag.filter.PropertyFilter.Companion.eq
+import com.embabel.agent.rag.filter.PropertyFilter.Companion.gte
+
+// Filter by single label
+val personFilter = EntityFilter.hasAnyLabel("Person")
+
+// Filter by multiple labels (OR semantics - entity must have ANY of these labels)
+val entityFilter = EntityFilter.hasAnyLabel("Person", "Organization")
+
+// Combine HasAnyLabel with property filters using fluent API
+val simpleCombo = EntityFilter.hasAnyLabel("Person") and eq("status", "active")
+
+// Multiple conditions
+val complexFilter = EntityFilter.hasAnyLabel("Person") and
+    eq("status", "active") and
+    gte("score", 0.8)
+
+// OR combinations
+val orFilter = EntityFilter.hasAnyLabel("Person") or eq("fallback", true)
+
+// With negation
+val notDeleted = EntityFilter.hasAnyLabel("Person") and !eq("status", "deleted")
+
+// Complex grouping
+val accessFilter = (EntityFilter.hasAnyLabel("Person", "Employee") and eq("active", true)) or
+    eq("role", "admin")
+----
+
+Since `EntityFilter` extends `PropertyFilter`, all filter types share the same `and`, `or`, `not` operators and can be freely combined.
+
+[source,java]
+----
+// Java usage
+EntityFilter personFilter = EntityFilter.hasAnyLabel("Person");
+EntityFilter multiTypeFilter = EntityFilter.hasAnyLabel("Person", "Organization");
+
+// Combine with property filters in Java
+PropertyFilter combined = EntityFilter.hasAnyLabel("Person")
+    .and(PropertyFilter.eq("status", "active"));
+----
+
+NOTE: `EntityFilter.HasAnyLabel` is typically handled via in-memory filtering as most vector stores don't have native label support. When using Neo4j backends, labels can be translated to native Cypher label predicates for optimal performance.
+
+[IMPORTANT]
+====
+**Limitation: Nested Properties Not Supported**
+
+Filters currently operate on top-level properties only. Nested property paths like `"address.city"` or `"metadata.source"` are **not** supported.
+The filter key must match a direct key in the metadata map or a top-level property on the entity object.
+
+For example:
+
+- `PropertyFilter.eq("owner", "alice")` - **Supported**: filters on top-level `owner` property
+- `PropertyFilter.eq("address.city", "London")` - **Not supported**: nested path will not match
+====
+
+====== Kotlin Operator Syntax
+
+Kotlin users can use operator and infix functions for a more natural DSL syntax:
+
+[source,kotlin]
+----
+import com.embabel.agent.rag.filter.PropertyFilter.Companion.eq
+import com.embabel.agent.rag.filter.PropertyFilter.Companion.gte
+import com.embabel.agent.rag.filter.PropertyFilter.Companion.ne
+
+// Simple filter with not operator
+val notDeleted = !eq("status", "deleted")
+
+// Combine with infix 'and' and 'or'
+val userAccess = eq("owner", userId) and gte("confidenceScore", 0.7)
+
+// Complex expressions with grouping
+val accessFilter = (eq("owner", userId) and ne("status", "deleted")) or
+    eq("role", "admin")
+----
+
+This is equivalent to the Java-style:
+
+[source,java]
+----
+PropertyFilter accessFilter = PropertyFilter.or(
+    PropertyFilter.and(
+        PropertyFilter.eq("owner", userId),
+        PropertyFilter.ne("status", "deleted")
+    ),
+    PropertyFilter.eq("role", "admin")
+);
+----
+
+====== Metadata vs Entity Filters
+
+`ToolishRag` accepts two separate filter parameters:
+
+- **`metadataFilter`**: A `PropertyFilter` that filters on the `metadata` map of `Datum` objects. Metadata is typically ingestion-time information like source URI, ingestion date, owner ID, etc.
+- **`entityFilter`**: An `EntityFilter` that filters on entity properties and labels. For `NamedEntityData`, this filters on the `properties` map and `labels()`. For typed entities, reflection is used to access top-level fields.
+
+[source,java]
+----
+// Filter on metadata (e.g., which user owns the document)
+PropertyFilter metadataFilter = PropertyFilter.eq("ownerId", currentUserId);
+
+// Filter on entity labels and properties
+EntityFilter entityFilter = EntityFilter.hasAnyLabel("Person");
+
+// Apply both filters
+ToolishRag scopedRag = toolishRag
+    .withMetadataFilter(metadataFilter)
+    .withEntityFilter(entityFilter);
+----
+
+[source,kotlin]
+----
+// Kotlin: Combine label filtering with property filtering
+val entityFilter = EntityFilter.hasAnyLabel("Person") and PropertyFilter.eq("status", "active")
+
+val scopedRag = toolishRag
+    .withMetadataFilter(PropertyFilter.eq("tenant", tenantId))
+    .withEntityFilter(entityFilter)
+----
+
+In most cases, you'll use metadata filters for access control and entity filters for type-based and business logic filtering.
+
+===== Neo4j Cypher Filtering
+
+When using Neo4j via the Drivine module, metadata filters are automatically converted to Cypher WHERE clauses using `CypherFilterConverter`:
+
+[source,kotlin]
+----
+// The filter is converted to Cypher WHERE clause automatically
+val filter = eq("owner", "alice") and gte("confidenceScore", 0.7)
+
+// In DrivineNamedEntityDataRepository:
+val results = repository.vectorSearch(request, metadataFilter = filter)
+// Generates: WHERE (e.owner = $_filter_0) AND (e.confidenceScore >= $_filter_1) AND ...
+----
+
+The converter produces parameterized queries for safety and handles all filter types including nested logical expressions.
+
+For both `DrivineStore` (chunks) and `DrivineNamedEntityDataRepository` (named entities), **both** metadata and property filters are translated to native Cypher WHERE clauses. This is because Neo4j stores all data as node properties - metadata is simply the set of properties that aren't core fields like `id`, `text`, `parentId`, etc. This provides optimal performance by filtering at the database level rather than in-memory.
+
+====== Basic Usage
+
+Apply a metadata filter to scope all searches to a specific owner:
+
+[source,java]
+----
+// Create a filter for the current user
+PropertyFilter ownerFilter = PropertyFilter.eq("ownerId", currentUserId);
+
+// Apply to ToolishRag - all searches will be filtered
+ToolishRag scopedRag = toolishRag.withMetadataFilter(ownerFilter);
+
+// Use in LLM call - LLM cannot see or bypass the filter
+context.ai()
+    .withReference(scopedRag)
+    .respondWithSystemPrompt(conversation, Map.of());
+----
+
+====== Complex Filters
+
+Combine filters for more sophisticated access control:
+
+[source,java]
+----
+// User can access their own documents OR documents in their departments
+PropertyFilter accessFilter = PropertyFilter.or(
+    PropertyFilter.eq("ownerId", currentUserId),
+    PropertyFilter.in("departmentId", userDepartmentIds)
+);
+
+ToolishRag scopedRag = toolishRag.withMetadataFilter(accessFilter);
+----
+
+[source,java]
+----
+// Organization-scoped with status restriction
+PropertyFilter orgFilter = PropertyFilter.and(
+    PropertyFilter.eq("orgId", currentOrgId),
+    PropertyFilter.ne("status", "deleted"),
+    PropertyFilter.gte("confidenceScore", 0.7)
+);
+
+ToolishRag scopedRag = toolishRag.withMetadataFilter(orgFilter);
+----
+
+====== Per-Request Scoping Pattern
+
+A common pattern is to create a scoped `ToolishRag` per request in a web application:
+
+[source,java]
+----
+@Action(trigger = UserMessage.class)
+void respond(Conversation conversation, ActionContext context) {
+    // Get current user from security context
+    String userId = SecurityContextHolder.getContext()
+        .getAuthentication().getName();
+
+    // Create user-scoped RAG for this request
+    ToolishRag userScopedRag = toolishRag.withMetadataFilter(
+        PropertyFilter.eq("ownerId", userId)
+    );
+
+    context.ai()
+        .withReference(userScopedRag)
+        .withTemplate("assistant")
+        .respondWithSystemPrompt(conversation, Map.of());
+}
+----
+
+====== Backend Implementation
+
+Filters are applied at different levels depending on the backend:
+
+- **Spring AI VectorStore**: Metadata filters are translated to `Filter.Expression` for native filtering; entity filters (including `HasAnyLabel`) are applied in-memory
+- **Neo4j (Drivine)**: Both metadata and entity filters (including `HasAnyLabel`) are translated to native Cypher WHERE clauses and label predicates (optimal performance)
+- **Lucene**: Both filter types are applied as post-filters with inflated `topK` to compensate for filtered-out results
+- **Custom stores**: Can implement `FilteringVectorSearch` / `FilteringTextSearch` for native translation, or fall back to in-memory filtering
+
+The `InMemoryPropertyFilter` utility class provides fallback filtering for any store implementation:
+
+[source,java]
+----
+// In your SearchOperations implementation
+List<SimilarityResult<T>> results = performSearch(request);
+return InMemoryPropertyFilter.filterResults(results, metadataFilter, entityFilter);
+----
+
+For `EntityFilter.HasAnyLabel`, the in-memory filter checks if the entity has any of the specified labels via `NamedEntityData.labels()`.
+
+This ensures filtering works across all backends, with native optimization for metadata filters where available.
 
 ==== Ingestion
 
@@ -308,9 +679,134 @@ Configuration options:
 - `overlapSize` - Character overlap between consecutive chunks (default: 200)
 - `includeSectionTitleInChunk` - Include section title in chunk text (default: true)
 
+===== Chunk Transformation
+
+When chunks are created from documents, they often lack the context needed for effective retrieval.
+A chunk containing "This approach improves performance by 40%" is not useful unless the reader knows what "this approach" refers to.
+The `ChunkTransformer` interface allows you to enrich chunks with additional context before they are indexed.
+
+====== The urtext Field
+
+Every `Chunk` has two text fields:
+
+- `text` - The indexed content, which may be transformed with additional context
+- `urtext` - The original, unmodified chunk text
+
+The `urtext` field preserves the original content for accurate citations.
+When displaying search results to users, use `urtext` to show exactly what appeared in the source document, while using the enriched `text` for vector embeddings and search.
+
+====== AddTitlesChunkTransformer
+
+The recommended default transformer is `AddTitlesChunkTransformer`, which prepends document and section titles to each chunk:
+
+[source,java]
+----
+@Bean
+ChunkTransformer chunkTransformer() {
+    return AddTitlesChunkTransformer.INSTANCE;
+}
+----
+
+This transforms a chunk like:
+
+----
+This approach improves performance by 40% compared to the baseline.
+----
+
+Into:
+
+----
+# Title: Performance Optimization Guide
+# URI: https://docs.example.com/performance
+# Section: Caching Strategies
+
+This approach improves performance by 40% compared to the baseline.
+----
+
+Now the chunk carries its context, improving both retrieval accuracy and LLM understanding.
+
+====== Custom Transformers
+
+You can create custom transformers by implementing `ChunkTransformer` or extending `AbstractChunkTransformer`:
+
+[source,java]
+----
+public class MetadataEnrichingTransformer extends AbstractChunkTransformer {
+
+    @Override
+    public Map<String, Object> additionalMetadata(
+            Chunk chunk,
+            ChunkTransformationContext context) {
+        return Map.of(
+            "documentType", context.getDocument().getMetadata().get("type"),
+            "lastModified", Instant.now().toString()
+        );
+    }
+
+    @Override
+    public String newText(Chunk chunk, ChunkTransformationContext context) {
+        // Optionally modify the text
+        return chunk.getText();
+    }
+}
+----
+
+The `ChunkTransformationContext` provides access to:
+
+- `section` - The `Section` containing this chunk
+- `document` - The `ContentRoot` (may be null for orphan sections)
+
+====== Chaining Transformers
+
+Use `ChainedChunkTransformer` to apply multiple transformations in sequence:
+
+[source,java]
+----
+@Bean
+ChunkTransformer chunkTransformer() {
+    return new ChainedChunkTransformer(List.of(
+        AddTitlesChunkTransformer.INSTANCE,
+        new MetadataEnrichingTransformer(),
+        new CustomCleanupTransformer()
+    ));
+}
+----
+
+Transformers are applied in order, with each receiving the output of the previous transformer.
+
+====== Configuring the Store
+
+Pass your `ChunkTransformer` to the store implementation:
+
+[source,java]
+----
+@Bean
+DrivineStore drivineStore(
+        PersistenceManager persistenceManager,
+        EmbeddingService embeddingService,
+        ChunkTransformer chunkTransformer,  // <1>
+        MyProperties properties) {
+    return new DrivineStore(
+        persistenceManager,
+        properties.neoRag(),
+        properties.chunkerConfig(),
+        chunkTransformer,  // <2>
+        embeddingService,
+        platformTransactionManager,
+        new DrivineCypherSearch(persistenceManager)
+    );
+}
+----
+
+<1> Inject the `ChunkTransformer` bean
+<2> Pass it to the store constructor
+
+TIP: For most use cases, `AddTitlesChunkTransformer` is all you need.
+It adds essential context that significantly improves retrieval quality without adding complexity.
+
 ===== Using Docling for Markdown Conversion
 
-While we strongly believe you should write your Gen AI *applications* in Java, ingestion is more in the realm of data science, and Python is indisputably strong in this area.
+While we believe that you should write your Gen AI *applications* in Java or Kotlin, ingestion is more in the realm of data science, and Python is indisputably strong in this area.
 
 For complex documents like PDFs, consider using https://github.com/DS4SD/docling[Docling] to convert to Markdown first:
 

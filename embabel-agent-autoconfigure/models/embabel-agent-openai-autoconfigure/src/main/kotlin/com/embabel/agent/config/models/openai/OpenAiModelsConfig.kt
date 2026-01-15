@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,23 +16,28 @@
 package com.embabel.agent.config.models.openai
 
 import com.embabel.agent.api.models.OpenAiModels
+import com.embabel.agent.openai.Gpt5ChatOptionsConverter
 import com.embabel.agent.openai.OpenAiCompatibleModelFactory
+import com.embabel.agent.openai.StandardOpenAiOptionsConverter
+import com.embabel.agent.spi.LlmService
 import com.embabel.agent.spi.common.RetryProperties
+import com.embabel.agent.spi.support.springai.SpringAiLlmService
 import com.embabel.common.ai.autoconfig.LlmAutoConfigMetadataLoader
 import com.embabel.common.ai.autoconfig.ProviderInitialization
 import com.embabel.common.ai.autoconfig.RegisteredModel
-import com.embabel.common.ai.model.*
+import com.embabel.common.ai.model.EmbeddingService
+import com.embabel.common.ai.model.PerTokenPricingModel
 import com.embabel.common.util.ExcludeFromJacocoGeneratedReport
-import com.embabel.common.util.loggerFor
 import io.micrometer.observation.ObservationRegistry
-import org.springframework.ai.openai.OpenAiChatOptions
 import org.springframework.beans.factory.ObjectProvider
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.beans.factory.config.ConfigurableBeanFactory
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.client.ClientHttpRequestFactory
 
 /**
  * Configuration properties for OpenAI model settings.
@@ -41,6 +46,26 @@ import org.springframework.context.annotation.Configuration
  */
 @ConfigurationProperties(prefix = "embabel.agent.platform.models.openai")
 class OpenAiProperties : RetryProperties {
+    /**
+     * Base URL for OpenAI API requests.
+     */
+    var baseUrl: String? = null
+
+    /**
+     * API key for authenticating with OpenAI services.
+     */
+    var apiKey: String? = null
+
+    /**
+     * Path to completions endpoint or configuration.
+     */
+    var completions: String? = null
+
+    /**
+     * Path to embeddings endpoint or configuration.
+     */
+    var embeddingsPath: String? = null
+
     /**
      *  Maximum number of attempts.
      */
@@ -71,24 +96,27 @@ class OpenAiProperties : RetryProperties {
 @EnableConfigurationProperties(OpenAiProperties::class)
 @ExcludeFromJacocoGeneratedReport(reason = "OpenAi configuration can't be unit tested")
 class OpenAiModelsConfig(
-    @Value("\${OPENAI_BASE_URL:#{null}}")
-    baseUrl: String?,
-    @Value("\${OPENAI_API_KEY}")
-    apiKey: String,
-    @Value("\${OPENAI_COMPLETIONS_PATH:#{null}}")
-    completionsPath: String?,
-    @Value("\${OPENAI_EMBEDDINGS_PATH:#{null}}")
-    embeddingsPath: String?,
+    @param:Value("\${OPENAI_BASE_URL:#{null}}")
+    private val envBaseUrl: String?,
+    @param:Value("\${OPENAI_API_KEY:#{null}}")
+    private val envApiKey: String?,
+    @param:Value("\${OPENAI_COMPLETIONS_PATH:#{null}}")
+    private val envCompletionsPath: String?,
+    @param:Value("\${OPENAI_EMBEDDINGS_PATH:#{null}}")
+    private val envEmbeddingsPath: String?,
     observationRegistry: ObjectProvider<ObservationRegistry>,
+    @Qualifier("aiModelHttpRequestFactory") requestFactory: ObjectProvider<ClientHttpRequestFactory>,
     private val properties: OpenAiProperties,
     private val configurableBeanFactory: ConfigurableBeanFactory,
     private val modelLoader: LlmAutoConfigMetadataLoader<OpenAiModelDefinitions> = OpenAiModelLoader(),
 ) : OpenAiCompatibleModelFactory(
-    baseUrl = baseUrl,
-    apiKey = apiKey,
-    completionsPath = completionsPath,
-    embeddingsPath = embeddingsPath,
-    observationRegistry = observationRegistry.getIfUnique { ObservationRegistry.NOOP }
+    baseUrl = envBaseUrl ?: properties.baseUrl,
+    apiKey = envApiKey ?: properties.apiKey
+    ?: error("OpenAI API key required: set OPENAI_API_KEY env var or embabel.agent.platform.models.openai.api-key"),
+    completionsPath = envCompletionsPath ?: properties.completions,
+    embeddingsPath = envEmbeddingsPath ?: properties.embeddingsPath,
+    observationRegistry = observationRegistry.getIfUnique { ObservationRegistry.NOOP },
+    requestFactory,
 ) {
 
     init {
@@ -107,13 +135,11 @@ class OpenAiModelsConfig(
                     configurableBeanFactory.registerSingleton(modelDef.name, llm)
                     add(RegisteredModel(beanName = modelDef.name, modelId = modelDef.modelId))
                     logger.info(
-                        "Registered OpenAI model bean: {} -> {}",
-                        modelDef.name, modelDef.modelId
+                        "Registered OpenAI model bean: {} -> {}", modelDef.name, modelDef.modelId
                     )
                 } catch (e: Exception) {
                     logger.error(
-                        "Failed to create model: {} ({})",
-                        modelDef.name, modelDef.modelId, e
+                        "Failed to create model: {} ({})", modelDef.name, modelDef.modelId, e
                     )
                     throw e
                 }
@@ -128,13 +154,11 @@ class OpenAiModelsConfig(
                     configurableBeanFactory.registerSingleton(embeddingDef.name, embeddingService)
                     add(RegisteredModel(beanName = embeddingDef.name, modelId = embeddingDef.modelId))
                     logger.info(
-                        "Registered OpenAI embedding model bean: {} -> {}",
-                        embeddingDef.name, embeddingDef.modelId
+                        "Registered OpenAI embedding model bean: {} -> {}", embeddingDef.name, embeddingDef.modelId
                     )
                 } catch (e: Exception) {
                     logger.error(
-                        "Failed to create embedding model: {} ({})",
-                        embeddingDef.name, embeddingDef.modelId, e
+                        "Failed to create embedding model: {} ({})", embeddingDef.name, embeddingDef.modelId, e
                     )
                     throw e
                 }
@@ -150,9 +174,9 @@ class OpenAiModelsConfig(
 
     /**
      * Creates an individual OpenAI LLM from configuration.
-     * Uses custom Llm constructor when pricing model is not available.
+     * Uses custom SpringAiLlm constructor when pricing model is not available.
      */
-    private fun createOpenAiLlm(modelDef: OpenAiModelDefinition): Llm {
+    private fun createOpenAiLlm(modelDef: OpenAiModelDefinition): LlmService<*> {
         // Determine the appropriate options converter based on model configuration
         val optionsConverter = if (modelDef.specialHandling?.supportsTemperature == false) {
             Gpt5ChatOptionsConverter
@@ -161,8 +185,7 @@ class OpenAiModelsConfig(
         }
 
         val chatModel = chatModelOf(
-            model = modelDef.modelId,
-            retryTemplate = properties.retryTemplate(modelDef.modelId)
+            model = modelDef.modelId, retryTemplate = properties.retryTemplate(modelDef.modelId)
         )
 
         // Create pricing model if present
@@ -173,10 +196,10 @@ class OpenAiModelsConfig(
             )
         }
 
-        // Use Llm constructor directly to handle nullable pricing model
-        return Llm(
+        // Use SpringAiLlm constructor directly to handle nullable pricing model
+        return SpringAiLlmService(
             name = modelDef.modelId,
-            model = chatModel,
+            chatModel = chatModel,
             provider = OpenAiModels.PROVIDER,
             optionsConverter = optionsConverter,
             knowledgeCutoffDate = modelDef.knowledgeCutoffDate,
@@ -192,42 +215,5 @@ class OpenAiModelsConfig(
             model = embeddingDef.modelId,
             provider = OpenAiModels.PROVIDER,
         )
-    }
-}
-
-/**
- * Options converter for GPT-5 models that don't support temperature adjustment.
- */
-internal object Gpt5ChatOptionsConverter : OptionsConverter<OpenAiChatOptions> {
-
-    override fun convertOptions(options: LlmOptions): OpenAiChatOptions {
-        if (options.temperature != null && options.temperature != 1.0) {
-            loggerFor<Gpt5ChatOptionsConverter>().warn(
-                "GPT-5 models do not support temperature settings other than default 1.0. You set {} but it will be ignored.",
-                options.temperature,
-            )
-        }
-        return OpenAiChatOptions.builder()
-            .topP(options.topP)
-            .maxTokens(options.maxTokens)
-            .presencePenalty(options.presencePenalty)
-            .frequencyPenalty(options.frequencyPenalty)
-            .build()
-    }
-}
-
-/**
- * Standard options converter for OpenAI models that support all parameters.
- */
-internal object StandardOpenAiOptionsConverter : OptionsConverter<OpenAiChatOptions> {
-
-    override fun convertOptions(options: LlmOptions): OpenAiChatOptions {
-        return OpenAiChatOptions.builder()
-            .temperature(options.temperature)
-            .topP(options.topP)
-            .maxTokens(options.maxTokens)
-            .presencePenalty(options.presencePenalty)
-            .frequencyPenalty(options.frequencyPenalty)
-            .build()
     }
 }

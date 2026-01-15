@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,11 +18,14 @@ package com.embabel.agent.spi.support.springai.streaming
 import com.embabel.agent.api.event.LlmRequestEvent
 import com.embabel.agent.core.Action
 import com.embabel.agent.core.AgentProcess
-import com.embabel.agent.spi.LlmInteraction
+import com.embabel.agent.core.support.LlmInteraction
+import com.embabel.agent.spi.LlmService
 import com.embabel.agent.spi.streaming.StreamingLlmOperations
 import com.embabel.agent.spi.support.springai.ChatClientLlmOperations
 import com.embabel.agent.spi.support.springai.PROMPT_ELEMENT_SEPARATOR
+import com.embabel.agent.spi.support.springai.SpringAiLlmService
 import com.embabel.agent.spi.support.springai.toSpringAiMessage
+import com.embabel.agent.spi.support.springai.toSpringToolCallbacks
 import com.embabel.chat.Message
 import com.embabel.common.ai.converters.streaming.StreamingJacksonOutputConverter
 import com.embabel.common.core.streaming.StreamingEvent
@@ -61,7 +64,7 @@ internal class StreamingChatClientOperations(
      * Build prompt contributions string from interaction and LLM contributors.
      * Consider helper
      */
-    private fun buildPromptContributions(interaction: LlmInteraction, llm: com.embabel.common.ai.model.Llm): String {
+    private fun buildPromptContributions(interaction: LlmInteraction, llm: LlmService<*>): String {
         return (interaction.promptContributors + llm.promptContributors)
             .joinToString(PROMPT_ELEMENT_SEPARATOR) { it.contribution() }
     }
@@ -124,6 +127,14 @@ internal class StreamingChatClientOperations(
             }
     }
 
+    /**
+     * Require the LLM to be a SpringAiLlm for Spring AI specific operations.
+     */
+    private fun requireSpringAiLlm(llm: LlmService<*>): SpringAiLlmService {
+        return llm as? SpringAiLlmService
+            ?: throw IllegalStateException("StreamingChatClientOperations requires SpringAiLlm, got ${llm::class.simpleName}")
+    }
+
     override fun doTransformStream(
         messages: List<Message>,
         interaction: LlmInteraction,
@@ -137,11 +148,11 @@ internal class StreamingChatClientOperations(
         val promptContributions = buildPromptContributions(interaction, llm)
         val springAiPrompt = buildSpringAiPrompt(messages, promptContributions)
 
-        val chatOptions = llm.optionsConverter.convertOptions(interaction.llm)
+        val chatOptions = requireSpringAiLlm(llm).optionsConverter.convertOptions(interaction.llm)
 
         return chatClient
             .prompt(springAiPrompt)
-            .toolCallbacks(interaction.toolCallbacks)
+            .toolCallbacks(interaction.tools.toSpringToolCallbacks())
             .options(chatOptions)
             .stream()
             .content()
@@ -293,7 +304,7 @@ internal class StreamingChatClientOperations(
         // Chat Client
         val chatClient = chatClientLlmOperations.createChatClient(llm)
         // Chat Options, additional potential option "streaming"
-        val chatOptions = llm.optionsConverter.convertOptions(interaction.llm)
+        val chatOptions = requireSpringAiLlm(llm).optionsConverter.convertOptions(interaction.llm)
 
         val streamingConverter = StreamingJacksonOutputConverter(
             clazz = outputClass,
@@ -316,7 +327,7 @@ internal class StreamingChatClientOperations(
         // Step 1: Original raw chunk stream from LLM
         val rawChunkFlux: Flux<String> = chatClient
             .prompt(springAiPrompt)
-            .toolCallbacks(interaction.toolCallbacks)
+            .toolCallbacks(interaction.tools.toSpringToolCallbacks())
             .options(chatOptions)
             .stream()
             .content()

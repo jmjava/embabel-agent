@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -118,7 +118,7 @@ class StarWarsLoggingAgenticEventListener : LoggingAgenticEventListener(
         "A little more knowledge lights our way: Object added: ${if (e.agentProcess.processContext.processOptions.verbosity.debug) e.value else e.value::class.java.simpleName} to process ${e.processId}"
 
     override fun getLlmRequestEventMessage(e: LlmRequestEvent<*>): String =
-        "[${e.processId}] (${e.interaction.id.value}) Ask LLM ${e.llm.name} we will: creating ${e.outputClass.simpleName}"
+        "[${e.processId}] (${e.interaction.id.value}) Ask LLM ${e.llmMetadata.name} we will: creating ${e.outputClass.simpleName}"
 
     override fun getActionExecutionStartMessage(e: ActionExecutionStartEvent): String =
         "[${e.processId}] Do or do not. There is no try: executing action ${e.action.name}"

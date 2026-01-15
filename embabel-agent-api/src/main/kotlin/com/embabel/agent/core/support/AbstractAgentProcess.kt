@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -252,12 +252,17 @@ abstract class AbstractAgentProcess(
     protected fun handleStuck(agent: Agent) {
         val stuckHandler = agent.stuckHandler
         if (stuckHandler == null) {
-            logger.warn(
-                "Process {} is stuck: no handler. History ({}):\n\t{}",
-                this.id,
-                history.size,
-                history.joinToString("\n\t") { it.actionName },
-            )
+            if (processOptions.plannerType.needsGoals) {
+                logger.warn(
+                    "Process {} is stuck with no StuckHandler. This may or may not be an error. History ({}):\n\t{}",
+                    this.id,
+                    history.size,
+                    history.joinToString("\n\t") { it.actionName },
+                )
+            } else {
+                // This is not an error. It's a common state for chatbots, for example.
+                logger.debug("Process {} is paused, with no available actions", this.id)
+            }
             return
         }
         val result = stuckHandler.handleStuck(this)
@@ -360,6 +365,9 @@ abstract class AbstractAgentProcess(
             }
         }
 
+        // Capture blackboard state before execution to detect if it was cleared
+        val blackboardObjectsBefore = blackboard.objects.toList()
+
         val timestamp = Instant.now()
         val actionStatus = action.qos.retryTemplate("Action-${action.name}").execute<ActionStatus, Throwable> {
             action.execute(
@@ -372,6 +380,21 @@ abstract class AbstractAgentProcess(
             timestamp = timestamp,
             runningTime = runningTime,
         )
+
+        // Set hasRun condition on blackboard after action execution.
+        // This must be set for ALL actions (not just canRerun=false) because other
+        // actions may depend on hasRun as a precondition (e.g., aggregate actions).
+        // The canRerun flag controls whether hasRun=FALSE is a precondition, not
+        // whether to track that the action ran.
+        // Only set if the blackboard wasn't cleared during execution.
+        // For state-clearing actions, the blackboard reset naturally prevents re-runs
+        // since inputs are gone. Setting hasRun on the NEW state's blackboard would
+        // incorrectly block actions that haven't run in the new state.
+        val blackboardWasCleared = blackboard.objects.none { it in blackboardObjectsBefore }
+        if (!blackboardWasCleared) {
+            blackboard.setCondition(Rerun.hasRunCondition(action), true)
+        }
+
         platformServices.eventListener.onProcessEvent(
             actionExecutionStartEvent.resultEvent(
                 actionStatus = actionStatus,

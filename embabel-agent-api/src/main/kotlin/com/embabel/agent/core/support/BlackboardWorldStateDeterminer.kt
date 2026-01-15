@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -109,11 +109,13 @@ class BlackboardWorldStateDeterminer(
             }
 
             condition.startsWith(Rerun.HAS_RUN_CONDITION_PREFIX) -> {
-                // Special case for hasRun- conditions
-                val actionName = condition.substringAfter(HAS_RUN_CONDITION_PREFIX)
-                val determination = ConditionDetermination(processContext.agentProcess.history.any {
-                    it.actionName == actionName
-                })
+                // Check blackboard for hasRun conditions.
+                // The condition is set on the blackboard after each action execution.
+                // When state transitions clear the blackboard, hasRun is naturally reset,
+                // but the action's input preconditions also won't be satisfied.
+                val determination = ConditionDetermination(
+                    processContext.blackboard.getCondition(condition)
+                ).asTrueOrFalse()
                 logger.debug(
                     "Determined hasRun condition {}={}: known conditions={}, bindings={}",
                     condition,

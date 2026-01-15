@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,28 +23,29 @@ import com.embabel.agent.api.common.streaming.StreamingPromptRunner
 import com.embabel.agent.api.common.streaming.StreamingPromptRunnerOperations
 import com.embabel.agent.api.common.support.streaming.StreamingCapabilityDetector
 import com.embabel.agent.api.common.support.streaming.StreamingPromptRunnerOperationsImpl
+import com.embabel.agent.api.common.thinking.ThinkingPromptRunnerOperations
+import com.embabel.agent.api.common.thinking.support.ThinkingPromptRunnerOperationsImpl
 import com.embabel.agent.api.tool.Tool
 import com.embabel.agent.core.ProcessOptions
 import com.embabel.agent.core.ToolGroup
 import com.embabel.agent.core.ToolGroupRequirement
 import com.embabel.agent.core.Verbosity
-import com.embabel.agent.core.support.safelyGetToolCallbacks
+import com.embabel.agent.core.support.safelyGetTools
 import com.embabel.agent.experimental.primitive.Determination
-import com.embabel.agent.spi.LlmInteraction
+import com.embabel.agent.core.support.LlmInteraction
 import com.embabel.agent.spi.support.springai.ChatClientLlmOperations
 import com.embabel.agent.spi.support.springai.streaming.StreamingChatClientOperations
-import com.embabel.agent.spi.support.springai.toSpringToolCallback
-import com.embabel.agent.tools.agent.AgentToolCallback
+import com.embabel.agent.tools.agent.AgentTool
 import com.embabel.agent.tools.agent.Handoffs
 import com.embabel.agent.tools.agent.PromptedTextCommunicator
 import com.embabel.chat.ImagePart
 import com.embabel.chat.Message
 import com.embabel.chat.UserMessage
 import com.embabel.common.ai.model.LlmOptions
+import com.embabel.common.ai.model.Thinking
 import com.embabel.common.ai.prompt.PromptContributor
 import com.embabel.common.core.types.ZeroToOne
 import com.embabel.common.util.loggerFor
-import org.springframework.ai.tool.ToolCallback
 import java.util.function.Predicate
 
 /**
@@ -63,7 +64,8 @@ internal data class OperationContextPromptRunner(
     private val contextualPromptContributors: List<ContextualPromptElement>,
     override val generateExamples: Boolean?,
     override val propertyFilter: Predicate<String> = Predicate { true },
-    private val otherToolCallbacks: List<ToolCallback> = emptyList(),
+    override val validation: Boolean = true,
+    private val otherTools: List<Tool> = emptyList(),
 ) : StreamingPromptRunner {
 
     val action = (context as? ActionContext)?.action
@@ -130,11 +132,12 @@ internal data class OperationContextPromptRunner(
             interaction = LlmInteraction(
                 llm = llm,
                 toolGroups = this.toolGroups + toolGroups,
-                toolCallbacks = safelyGetToolCallbacks(toolObjects) + otherToolCallbacks,
+                tools = safelyGetTools(toolObjects) + otherTools,
                 promptContributors = allPromptContributors,
                 id = interactionId ?: idForPrompt(messages, outputClass),
                 generateExamples = generateExamples,
                 propertyFilter = propertyFilter,
+                validation = validation,
             ),
             outputClass = outputClass,
             agentProcess = context.processContext.agentProcess,
@@ -152,7 +155,7 @@ internal data class OperationContextPromptRunner(
             interaction = LlmInteraction(
                 llm = llm,
                 toolGroups = this.toolGroups + toolGroups,
-                toolCallbacks = safelyGetToolCallbacks(toolObjects) + otherToolCallbacks,
+                tools = safelyGetTools(toolObjects) + otherTools,
                 promptContributors = promptContributors + contextualPromptContributors.map {
                     it.toPromptContributor(
                         context
@@ -161,6 +164,7 @@ internal data class OperationContextPromptRunner(
                 id = interactionId ?: idForPrompt(messages, outputClass),
                 generateExamples = generateExamples,
                 propertyFilter = propertyFilter,
+                validation = validation,
             ),
             outputClass = outputClass,
             agentProcess = context.processContext.agentProcess,
@@ -222,13 +226,13 @@ internal data class OperationContextPromptRunner(
         copy(toolGroups = this.toolGroups + toolGroup)
 
     override fun withToolGroup(toolGroup: ToolGroup): PromptRunner =
-        copy(otherToolCallbacks = otherToolCallbacks + toolGroup.toolCallbacks)
+        copy(otherTools = otherTools + toolGroup.tools)
 
     override fun withToolObject(toolObject: ToolObject): PromptRunner =
         copy(toolObjects = this.toolObjects + toolObject)
 
     override fun withTool(tool: Tool): PromptRunner =
-        copy(otherToolCallbacks = this.otherToolCallbacks + tool.toSpringToolCallback())
+        copy(otherTools = this.otherTools + tool)
 
     override fun withHandoffs(vararg outputTypes: Class<*>): PromptRunner {
         val handoffs = Handoffs(
@@ -237,16 +241,16 @@ internal data class OperationContextPromptRunner(
             applicationName = context.agentPlatform().name,
         )
         return copy(
-            otherToolCallbacks = this.otherToolCallbacks + handoffs.toolCallbacks,
+            otherTools = this.otherTools + handoffs.tools,
         )
     }
 
     override fun withSubagents(
         vararg subagents: Subagent,
     ): PromptRunner {
-        val newCallbacks = subagents.map { subagent ->
+        val newTools = subagents.map { subagent ->
             val agent = subagent.resolve(context.agentPlatform())
-            AgentToolCallback(
+            AgentTool(
                 autonomy = context.agentPlatform().platformServices.autonomy(),
                 agent = agent,
                 textCommunicator = PromptedTextCommunicator,
@@ -267,7 +271,7 @@ internal data class OperationContextPromptRunner(
             )
         }
         return copy(
-            otherToolCallbacks = this.otherToolCallbacks + newCallbacks,
+            otherTools = this.otherTools + newTools,
         )
     }
 
@@ -284,6 +288,9 @@ internal data class OperationContextPromptRunner(
 
     override fun withPropertyFilter(filter: Predicate<String>): PromptRunner =
         copy(propertyFilter = this.propertyFilter.and(filter))
+
+    override fun withValidation(validation: Boolean): PromptRunner =
+        copy(validation = validation)
 
     override fun <T> creating(outputClass: Class<T>): ObjectCreator<T> {
         return PromptRunnerObjectCreator(
@@ -309,9 +316,11 @@ internal data class OperationContextPromptRunner(
     override fun stream(): StreamingPromptRunnerOperations {
         if (!supportsStreaming()) {
             throw UnsupportedOperationException(
-                "Streaming not supported by underlying LLM model. " +
-                "Model type: ${context.agentPlatform().platformServices.llmOperations::class.simpleName}. " +
-                "Check supportsStreaming() before calling stream()."
+                """
+                Streaming not supported by underlying LLM model.
+                Model type: ${context.agentPlatform().platformServices.llmOperations::class.simpleName}.
+                Check supportsStreaming() before calling stream().
+                """.trimIndent()
             )
         }
 
@@ -322,11 +331,57 @@ internal data class OperationContextPromptRunner(
             interaction = LlmInteraction(
                 llm = llm,
                 toolGroups = toolGroups,
-                toolCallbacks = safelyGetToolCallbacks(toolObjects) + otherToolCallbacks,
+                tools = safelyGetTools(toolObjects) + otherTools,
                 promptContributors = promptContributors + contextualPromptContributors.map {
                     it.toPromptContributor(context)
                 },
                 id = interactionId ?: InteractionId("${context.operation.name}-streaming"),
+                generateExamples = generateExamples,
+                propertyFilter = propertyFilter,
+            ),
+            messages = messages,
+            agentProcess = context.processContext.agentProcess,
+            action = action,
+        )
+    }
+
+    /**
+     * Create thinking-aware prompt operations that extract LLM reasoning blocks.
+     *
+     * This method creates ThinkingPromptRunnerOperations that can capture both the
+     * converted results and the reasoning content that LLMs generate during processing.
+     *
+     * @return ThinkingPromptRunnerOperations for executing prompts with thinking extraction
+     * @throws UnsupportedOperationException if the underlying LLM operations don't support thinking extraction
+     */
+    override fun supportsThinking(): Boolean = true
+
+    override fun withThinking(): ThinkingPromptRunnerOperations {
+        val llmOperations = context.agentPlatform().platformServices.llmOperations
+
+        if (llmOperations !is ChatClientLlmOperations) {
+            throw UnsupportedOperationException(
+                """
+                Thinking extraction not supported by underlying LLM operations.
+                Operations type: ${llmOperations::class.simpleName}.
+                Thinking extraction requires ChatClientLlmOperations.
+                """.trimIndent()
+            )
+        }
+        11
+        // Auto-enable thinking extraction when withThinking() is called
+        val thinkingEnabledLlm = llm.withThinking(Thinking.withExtraction())
+
+        return ThinkingPromptRunnerOperationsImpl(
+            chatClientOperations = llmOperations,
+            interaction = LlmInteraction(
+                llm = thinkingEnabledLlm,
+                toolGroups = toolGroups,
+                tools = safelyGetTools(toolObjects) + otherTools,
+                promptContributors = promptContributors + contextualPromptContributors.map {
+                    it.toPromptContributor(context)
+                },
+                id = interactionId ?: InteractionId("${context.operation.name}-thinking"),
                 generateExamples = generateExamples,
                 propertyFilter = propertyFilter,
             ),

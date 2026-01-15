@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,18 +18,21 @@ package com.embabel.agent.api.annotation.support
 import com.embabel.agent.api.annotation.AwaitableResponseException
 import com.embabel.agent.api.annotation.RequireNameMatch
 import com.embabel.agent.api.annotation.SpecialReturnException
-import com.embabel.agent.api.annotation.State
 import com.embabel.agent.api.common.ActionContext
 import com.embabel.agent.api.common.OperationContext
 import com.embabel.agent.api.common.TransformationActionContext
 import com.embabel.agent.api.common.support.MultiTransformationAction
-import com.embabel.agent.core.*
+import com.embabel.agent.api.tool.Tool
+import com.embabel.agent.core.Action
+import com.embabel.agent.core.Blackboard
+import com.embabel.agent.core.DataDictionary
+import com.embabel.agent.core.DomainType
+import com.embabel.agent.core.IoBinding
 import com.embabel.agent.core.support.BlackboardWorldState
 import com.embabel.common.core.types.ZeroToOne
 import com.embabel.plan.CostComputation
 import com.embabel.plan.WorldState
 import org.slf4j.LoggerFactory
-import org.springframework.ai.tool.ToolCallback
 import org.springframework.core.KotlinDetector
 import org.springframework.stereotype.Component
 import org.springframework.util.ReflectionUtils
@@ -49,6 +52,7 @@ import kotlin.reflect.jvm.kotlinFunction
 @Component
 internal class DefaultActionMethodManager(
     val nameGenerator: MethodDefinedOperationNameGenerator = MethodDefinedOperationNameGenerator(),
+    val actionQosProvider: ActionQosProvider = DefaultActionQosProvider(),
     override val argumentResolvers: List<ActionMethodArgumentResolver> = listOf(
         ProcessContextArgumentResolver(),
         OperationContextArgumentResolver(),
@@ -63,7 +67,7 @@ internal class DefaultActionMethodManager(
     override fun createAction(
         method: Method,
         instance: Any,
-        toolCallbacksOnInstance: List<ToolCallback>,
+        toolsOnInstance: List<Tool>,
         costMethods: Map<String, CostMethodInfo>,
     ): Action {
         requireNonAmbiguousParameters(method)
@@ -73,16 +77,6 @@ internal class DefaultActionMethodManager(
         val inputs = resolveInputBindings(method)
 
         require(method.returnType != null) { "Action method ${method.name} must have a return type" }
-        val clearBlackboard = method.returnType.isAnnotationPresent(State::class.java) ||
-                actionAnnotation.clearBlackboard
-
-        // Check for @Trigger parameter and create precondition
-        val triggerType = findTriggerType(method)
-        val triggerPreconditions = if (triggerType != null) {
-            listOf(triggerPrecondition(triggerType))
-        } else {
-            emptyList()
-        }
 
         // Create cost computation - either from @Cost method or static value
         val costComputation = resolveCostComputation(
@@ -107,17 +101,14 @@ internal class DefaultActionMethodManager(
             value = valueComputation,
             inputs = inputs.toSet(),
             canRerun = actionAnnotation.canRerun,
-            clearBlackboard = clearBlackboard,
-            pre = actionAnnotation.pre.toList() + triggerPreconditions,
+            clearBlackboard = computeClearBlackboard(method, actionAnnotation),
+            pre = actionAnnotation.pre.toList() + computeTriggerPreconditions(method),
             post = actionAnnotation.post.toList(),
             inputClasses = inputClasses,
             outputClass = method.returnType,
             outputVarName = actionAnnotation.outputBinding,
-            toolGroups = (actionAnnotation.toolGroupRequirements.map { ToolGroupRequirement(it.role) } + actionAnnotation.toolGroups.map {
-                ToolGroupRequirement(
-                    it
-                )
-            }).toSet(),
+            toolGroups = computeToolGroups(actionAnnotation),
+            qos = actionQosProvider.provideActionQos(method, instance),
         ) { context ->
             invokeActionMethod(
                 method = method,
@@ -372,5 +363,6 @@ internal class DefaultActionMethodManager(
  * at planning time without access to full agent metadata.
  */
 private object EmptyDataDictionary : DataDictionary {
+    override val name: String = "EmptyDataDictionary"
     override val domainTypes: Collection<DomainType> = emptyList()
 }

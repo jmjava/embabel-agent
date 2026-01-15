@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ class UtilityInvocationJavaTest {
         );
 
         when(agentPlatform.getName()).thenReturn("test-platform");
-        when(agentScopeBuilder.build()).thenReturn(agentScope);
+        when(agentScopeBuilder.createAgentScope()).thenReturn(agentScope);
         when(agentScope.createAgent(anyString(), anyString(), anyString())).thenReturn(agent);
     }
 
@@ -251,7 +251,7 @@ class UtilityInvocationJavaTest {
         // When scope is not provided, it defaults to agentPlatform
         // Since AgentPlatform extends AgentScope, we can test this by checking
         // that createAgent is called on agentPlatform when no scope is provided
-        when(agentPlatform.build()).thenReturn(agentPlatform);
+        when(agentPlatform.createAgentScope()).thenReturn(agentPlatform);
         when(agentPlatform.createAgent(anyString(), anyString(), anyString())).thenReturn(agent);
         when(agentPlatform.createAgentProcessFrom(
                 any(Agent.class),

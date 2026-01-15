@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,10 @@
  */
 package com.embabel.agent.mcpserver.sync.config
 
+import com.embabel.agent.api.common.ToolObject
+import com.embabel.agent.core.support.safelyGetToolsFrom
 import com.embabel.agent.mcpserver.*
+import com.embabel.agent.spi.support.springai.toSpringToolCallbacks
 import com.embabel.agent.mcpserver.domain.McpExecutionMode
 import com.embabel.agent.mcpserver.sync.McpPromptPublisher
 import com.embabel.agent.mcpserver.sync.McpResourcePublisher
@@ -25,7 +28,6 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.ai.mcp.McpToolUtils
 import org.springframework.ai.tool.ToolCallbackProvider
-import org.springframework.ai.tool.method.MethodToolCallbackProvider
 import org.springframework.beans.factory.getBean
 import org.springframework.beans.factory.getBeansOfType
 import org.springframework.context.ConfigurableApplicationContext
@@ -103,9 +105,11 @@ class McpSyncServerConfiguration(
      * @return a `ToolCallbackProvider` for the banner tool
      */
     override fun createBannerTool(): ToolCallbackProvider {
-        return MethodToolCallbackProvider.builder()
-            .toolObjects(UnifiedBannerTool(serverInfo))
-            .build()
+        return ToolCallbackProvider.from(
+            safelyGetToolsFrom(
+                ToolObject.from(UnifiedBannerTool(serverInfo))
+            ).toSpringToolCallbacks()
+        )
     }
 
     /**

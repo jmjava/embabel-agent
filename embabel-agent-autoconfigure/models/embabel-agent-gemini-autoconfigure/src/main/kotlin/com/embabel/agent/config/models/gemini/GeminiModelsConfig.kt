@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,11 +18,11 @@ package com.embabel.agent.config.models.gemini
 import com.embabel.agent.api.models.GeminiModels
 import com.embabel.agent.openai.OpenAiChatOptionsConverter
 import com.embabel.agent.openai.OpenAiCompatibleModelFactory
+import com.embabel.agent.spi.LlmService
 import com.embabel.agent.spi.common.RetryProperties
 import com.embabel.common.ai.autoconfig.LlmAutoConfigMetadataLoader
 import com.embabel.common.ai.autoconfig.ProviderInitialization
 import com.embabel.common.ai.autoconfig.RegisteredModel
-import com.embabel.common.ai.model.Llm
 import com.embabel.common.ai.model.PerTokenPricingModel
 import com.embabel.common.ai.model.PricingModel
 import com.embabel.common.util.ExcludeFromJacocoGeneratedReport
@@ -43,6 +43,16 @@ import org.springframework.context.annotation.Configuration
  */
 @ConfigurationProperties(prefix = "embabel.agent.platform.models.gemini")
 class GeminiProperties : RetryProperties {
+    /**
+     * Base URL for Gemini API requests.
+     */
+    var baseUrl: String? = null
+
+    /**
+     * API key for authenticating with Gemini services.
+     */
+    var apiKey: String? = null
+
     /**
      *  Maximum number of attempts.
      */
@@ -76,17 +86,18 @@ class GeminiProperties : RetryProperties {
 @EnableConfigurationProperties(GeminiProperties::class)
 @ExcludeFromJacocoGeneratedReport(reason = "Gemini configuration can't be unit tested")
 class GeminiModelsConfig(
-    @Value("\${GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai}")
-    baseUrl: String,
-    @Value("\${GEMINI_API_KEY}")
-    apiKey: String,
+    @param:Value("\${GEMINI_BASE_URL:#{null}}")
+    private val envBaseUrl: String?,
+    @param:Value("\${GEMINI_API_KEY:#{null}}")
+    private val envApiKey: String?,
     observationRegistry: ObjectProvider<ObservationRegistry>,
     private val properties: GeminiProperties,
     private val configurableBeanFactory: ConfigurableBeanFactory,
     private val modelLoader: LlmAutoConfigMetadataLoader<GeminiModelDefinitions> = GeminiModelLoader(),
 ) : OpenAiCompatibleModelFactory(
-    baseUrl = baseUrl,
-    apiKey = apiKey,
+    baseUrl = envBaseUrl ?: properties.baseUrl ?: DEFAULT_BASE_URL,
+    apiKey = envApiKey ?: properties.apiKey
+    ?: error("Gemini API key required: set GEMINI_API_KEY env var or embabel.agent.platform.models.gemini.api-key"),
     completionsPath = null,
     embeddingsPath = null,
     observationRegistry = observationRegistry.getIfUnique { ObservationRegistry.NOOP }
@@ -94,6 +105,10 @@ class GeminiModelsConfig(
 
     init {
         logger.info("Google Gemini models are available: {}", properties)
+    }
+
+    companion object {
+        private const val DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
     }
 
     @Bean
@@ -132,7 +147,7 @@ class GeminiModelsConfig(
      * Creates an individual Gemini LLM from configuration.
      * Uses OpenAI-compatible API format via the parent factory.
      */
-    private fun createGeminiLlm(modelDef: GeminiModelDefinition): Llm {
+    private fun createGeminiLlm(modelDef: GeminiModelDefinition): LlmService<*> {
         return openAiCompatibleLlm(
             modelDef.modelId,
             modelDef.pricingModel?.let {

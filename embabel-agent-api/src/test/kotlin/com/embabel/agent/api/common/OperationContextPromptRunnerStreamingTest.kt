@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,13 +21,13 @@ import com.embabel.agent.api.common.support.OperationContextPromptRunner
 import com.embabel.agent.core.AgentPlatform
 import com.embabel.agent.core.AgentProcess
 import com.embabel.agent.core.Operation
-import com.embabel.agent.spi.LlmInteraction
+import com.embabel.agent.core.support.LlmInteraction
 import com.embabel.agent.spi.LlmOperations
 import com.embabel.agent.spi.streaming.StreamingLlmOperations
 import com.embabel.agent.spi.support.springai.ChatClientLlmOperations
+import com.embabel.agent.spi.support.springai.SpringAiLlmService
 import com.embabel.agent.test.integration.DummyObjectCreatingLlmOperations
 import com.embabel.chat.UserMessage
-import com.embabel.common.ai.model.Llm
 import com.embabel.common.ai.model.LlmOptions
 import io.mockk.every
 import io.mockk.mockk
@@ -68,8 +68,8 @@ class OperationContextPromptRunnerStreamingTest {
             )
         }
 
-        val mockLlm = mockk<Llm> {
-            every { model } returns mockStreamingChatModel
+        val mockLlm = mockk<SpringAiLlmService> {
+            every { chatModel } returns mockStreamingChatModel
         }
 
         val mockChatClientLlmOperations =

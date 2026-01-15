@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  */
 package com.embabel.agent.autoconfigure.models.bedrock;
 
-import com.embabel.common.ai.model.Llm;
+import com.embabel.agent.spi.LlmService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,10 +51,10 @@ class AgentBedrockAutoConfigurationIT {
 
     @Test
     public void testAutoConfiguredBedrockModelsBeanPresence() {
-        List<String> bedrockLlmsNames = Arrays.stream(applicationContext.getBeanNamesForType(Llm.class))
+        List<String> bedrockLlmsNames = Arrays.stream(applicationContext.getBeanNamesForType(LlmService.class))
                 .filter(it -> it.startsWith("bedrockModel-"))
-                .map(it -> applicationContext.getBean(it, Llm.class))
-                .map(Llm::getName)
+                .map(it -> applicationContext.getBean(it, LlmService.class))
+                .map(LlmService::getName)
                 .toList();
 
         Assertions.assertFalse(bedrockLlmsNames.isEmpty());

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,14 +20,15 @@ import com.embabel.agent.api.common.ToolObject
 import com.embabel.agent.test.type.FunnyTool
 import com.embabel.agent.test.type.PersonWithReverseTool
 import com.embabel.common.util.StringTransformer
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
 class McpToolExportTest {
 
     @Nested
-    inner class `fromToolObject` {
+    inner class FromToolObject {
 
         @Test
         fun `creates export with single tool`() {
@@ -323,14 +324,14 @@ class McpToolExportTest {
     }
 
     @Nested
-    inner class `tool invocation with logging` {
+    inner class ToolInvocationWithLogging {
 
         @Test
         fun `decorated tool callback can be invoked`() {
             val export = McpToolExport.fromToolObject(ToolObject(PersonWithReverseTool("hello")))
             val reverseTool = export.toolCallbacks.first { it.toolDefinition.name() == "reverse" }
             val result = reverseTool.call("{}")
-            assertEquals("\"olleh\"", result)
+            assertEquals("olleh", result)
         }
     }
 

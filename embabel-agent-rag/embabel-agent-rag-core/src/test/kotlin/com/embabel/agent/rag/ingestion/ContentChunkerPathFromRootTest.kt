@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,10 @@ import java.util.*
  */
 class ContentChunkerPathFromRootTest {
 
-    private val chunker = ContentChunker()
+    private val chunker = ContentChunker(
+        ContentChunker.Config(),
+        ChunkTransformer.NO_OP,
+    )
 
     @Test
     fun `test chunks from single leaf section have non-null pathFromRoot`() {

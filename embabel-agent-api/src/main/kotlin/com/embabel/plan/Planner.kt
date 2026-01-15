@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -63,13 +63,13 @@ interface Planner<S : PlanningSystem, W : WorldState, P : Plan> {
         return system.goals.mapNotNull { goal ->
             val plan = planToGoal(system.actions, goal)
             if (plan != null) {
-                LoggerFactory.getLogger(javaClass).info(
+                LoggerFactory.getLogger(javaClass).debug(
                     "Found plan to goal {}: {}",
                     goal.name,
                     plan.infoString(verbose = false),
                 )
             } else {
-                LoggerFactory.getLogger(javaClass).info(
+                LoggerFactory.getLogger(javaClass).debug(
                     "No plan found to goal {}",
                     goal.name,
                 )

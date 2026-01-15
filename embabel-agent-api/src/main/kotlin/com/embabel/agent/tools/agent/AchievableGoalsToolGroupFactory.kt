@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ class AchievableGoalsToolGroupFactory(
      * Creates a ToolGroup containing achievable goals for the chat agent
      * from the present OperationContext
      * @param bindings any additional bindings to pass to the agent process
-     * @param listeners any additional listeners to attach to the tool callbacks
+     * @param listeners any additional listeners to attach to the tools
      * @param excludedTypes types of goals to exclude from the tool group
      */
     fun achievableGoalsToolGroup(
@@ -54,7 +54,7 @@ class AchievableGoalsToolGroupFactory(
         ).filterNot { goal ->
             excludedTypes.any { excludedType -> (goal.outputType as? JvmType)?.isAssignableFrom(excludedType) == true }
         }
-        return ToolGroup(
+        return ToolGroup.ofTools(
             metadata = ToolGroupMetadata(
                 name = "Default chat tools",
                 description = "Default tools for chat agent",
@@ -62,8 +62,8 @@ class AchievableGoalsToolGroupFactory(
                 provider = Constants.EMBABEL_PROVIDER,
                 permissions = emptySet(),
             ),
-            toolCallbacks = achievableGoals.mapIndexed { _, goal ->
-                GoalToolCallback(
+            tools = achievableGoals.map { goal ->
+                GoalTool(
                     autonomy = autonomy,
                     name = goalToolNamingStrategy.nameForGoal(goal),
                     goal = goal,

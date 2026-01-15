@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,19 @@
 package com.embabel.agent.api.annotation.support
 
 import com.embabel.agent.api.annotation.*
+import com.embabel.agent.api.annotation.Action
+import com.embabel.agent.api.annotation.Agent
+import com.embabel.agent.api.annotation.Condition
 import com.embabel.agent.api.common.OperationContext
 import com.embabel.agent.api.common.PlannerType
 import com.embabel.agent.api.common.StuckHandler
 import com.embabel.agent.api.common.ToolObject
+import com.embabel.agent.api.tool.Tool
 import com.embabel.agent.core.*
 import com.embabel.agent.core.Export
 import com.embabel.agent.core.support.NIRVANA
 import com.embabel.agent.core.support.Rerun
-import com.embabel.agent.core.support.safelyGetToolCallbacksFrom
+import com.embabel.agent.core.support.safelyGetToolsFrom
 import com.embabel.agent.spi.validation.*
 import com.embabel.common.core.types.Semver
 import com.embabel.common.util.NameUtils
@@ -32,7 +36,6 @@ import com.embabel.common.util.loggerFor
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import org.slf4j.LoggerFactory
-import org.springframework.ai.tool.ToolCallback
 import org.springframework.cglib.proxy.Enhancer
 import org.springframework.stereotype.Service
 import org.springframework.util.ClassUtils
@@ -168,7 +171,7 @@ class AgentMetadataReader(
         val conditionMethods = findConditionMethods(targetType)
         val costMethods = findCostMethods(targetType, instance)
 
-        val toolCallbacksOnInstance = safelyGetToolCallbacksFrom(ToolObject.from(instance))
+        val toolsOnInstance = safelyGetToolsFrom(ToolObject.from(instance))
 
         val conditions = conditionMethods.map { createCondition(it, instance) }.toSet()
 
@@ -179,7 +182,7 @@ class AgentMetadataReader(
 
         // Process top-level action methods
         for (actionMethod in actionMethods) {
-            val action = actionMethodManager.createAction(actionMethod, instance, toolCallbacksOnInstance, costMethods)
+            val action = actionMethodManager.createAction(actionMethod, instance, toolsOnInstance, costMethods)
             allActions.add(action)
             createGoalFromActionMethod(actionMethod, action, instance)?.let { allGoals.add(it) }
 
@@ -188,7 +191,7 @@ class AgentMetadataReader(
             unrollStateType(
                 stateType = returnType,
                 agentInstance = instance,
-                toolCallbacksOnInstance = toolCallbacksOnInstance,
+                toolsOnInstance = toolsOnInstance,
                 allActions = allActions,
                 allGoals = allGoals,
                 processedStateTypes = processedStateTypes,
@@ -294,7 +297,7 @@ class AgentMetadataReader(
     private fun unrollStateType(
         stateType: Class<*>,
         agentInstance: Any,
-        toolCallbacksOnInstance: List<ToolCallback>,
+        toolsOnInstance: List<Tool>,
         allActions: MutableList<CoreAction>,
         allGoals: MutableList<AgentCoreGoal>,
         processedStateTypes: MutableSet<Class<*>>,
@@ -312,7 +315,6 @@ class AgentMetadataReader(
                 val action = createActionFromStateMethod(
                     actionMethod,
                     stateClass,
-                    agentInstance,
                 )
                 allActions.add(action)
                 createGoalFromStateActionMethod(actionMethod, action, stateClass, agentInstance)?.let {
@@ -322,7 +324,7 @@ class AgentMetadataReader(
                 unrollStateType(
                     stateType = actionMethod.returnType,
                     agentInstance = agentInstance,
-                    toolCallbacksOnInstance = toolCallbacksOnInstance,
+                    toolsOnInstance = toolsOnInstance,
                     allActions = allActions,
                     allGoals = allGoals,
                     processedStateTypes = processedStateTypes,
@@ -340,7 +342,7 @@ class AgentMetadataReader(
     private fun findStateClasses(type: Class<*>): List<Class<*>> {
         val result = mutableListOf<Class<*>>()
         // Check if the type itself is a @State
-        if (type.isAnnotationPresent(State::class.java)) {
+        if (isStateType(type)) {
             validateStateClass(type)
             result.add(type)
         }
@@ -349,7 +351,7 @@ class AgentMetadataReader(
         val jvmType = JvmType(type)
         val children = jvmType.children()
         for (child in children) {
-            if (child.clazz.isAnnotationPresent(State::class.java)) {
+            if (isStateType(child.clazz)) {
                 validateStateClass(child.clazz)
                 result.add(child.clazz)
             }
@@ -385,11 +387,10 @@ class AgentMetadataReader(
     private fun createActionFromStateMethod(
         method: Method,
         stateClass: Class<*>,
-        agentInstance: Any,
     ): CoreAction {
         return StateActionMethodManager(
             actionMethodManager = actionMethodManager,
-        ).createAction(method, stateClass, agentInstance)
+        ).createAction(method, stateClass)
     }
 
     /**

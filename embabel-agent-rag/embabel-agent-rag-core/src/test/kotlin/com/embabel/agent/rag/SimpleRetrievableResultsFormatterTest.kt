@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 package com.embabel.agent.rag
 
 import com.embabel.agent.rag.model.Chunk
-import com.embabel.agent.rag.model.SimpleEntityData
 import com.embabel.agent.rag.model.SimpleNamedEntityData
 import com.embabel.agent.rag.service.SimilarityResults
 import com.embabel.agent.rag.service.SimpleRetrievableResultsFormatter
@@ -80,28 +79,6 @@ class SimpleRetrievableResultsFormatterTest {
         )
         val output = SimpleRetrievableResultsFormatter.formatResults(results)
         assertTrue(output.contains(longContent))
-    }
-
-    @Test
-    fun `does not expose entity embedding for SimpleEntityData`() {
-        val results = SimilarityResults.fromList(
-            listOf(
-                SimpleSimilaritySearchResult(
-                    match = SimpleEntityData(
-                        "id",
-                        labels = setOf("Label"),
-                        properties = mapOf(
-                            "embedding" to listOf(0.1, 0.2, 0.3),
-                            "text" to "foo"
-                        )
-                    ),
-                    score = 1.0,
-                )
-            )
-        )
-        val output = SimpleRetrievableResultsFormatter.formatResults(results)
-        assertTrue(output.contains("foo"))
-        assertFalse(output.contains("embedding"), "Should suppress embedding, have \n$output")
     }
 
     @Test

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import com.embabel.agent.core.hitl.ConfirmationRequest
 import com.embabel.agent.core.support.InMemoryBlackboard
 import com.embabel.agent.core.support.SimpleAgentProcess
 import com.embabel.agent.domain.io.UserInput
-import com.embabel.agent.spi.LlmInteraction
+import com.embabel.agent.core.support.LlmInteraction
 import com.embabel.agent.spi.LlmOperations
 import com.embabel.agent.spi.support.DefaultPlannerFactory
 import com.embabel.agent.support.Dog
@@ -42,7 +42,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
-import org.springframework.ai.tool.ToolCallback
+import com.embabel.agent.api.tool.Tool
 import com.embabel.agent.core.Agent as CoreAgent
 
 
@@ -882,27 +882,27 @@ class AgentMetadataReaderActionTest {
 
         @Test
         fun `prompt action invocation with tool object passed in via using with renaming`() {
-            val toolCallbacks =
+            val tools =
                 testToolsAreExposed(FromPersonUsesObjectToolsViaUsingWithRenaming(), expectedToolCount = 2)
             assertTrue(
-                toolCallbacks.any { it.toolDefinition.name() == "_thing" },
-                "Should have renamed thing tool, had ${toolCallbacks.map { it.toolDefinition.name() }}",
+                tools.any { it.definition.name == "_thing" },
+                "Should have renamed thing tool, had ${tools.map { it.definition.name }}",
             )
         }
 
         @Test
         fun `prompt action invocation with tool object passed in via context with renaming`() {
-            val toolCallbacks =
+            val tools =
                 testToolsAreExposed(FromPersonUsesObjectToolsViaContextWithRenaming(), expectedToolCount = 2)
             assertTrue(
-                toolCallbacks.any { it.toolDefinition.name() == "_thing" },
-                "Should have renamed thing tool, had ${toolCallbacks.map { it.toolDefinition.name() }}",
+                tools.any { it.definition.name == "_thing" },
+                "Should have renamed thing tool, had ${tools.map { it.definition.name }}",
             )
         }
 
         @Test
         fun `prompt action invocation with tool object passed in via using with filter`() {
-            val toolCallbacks =
+            val tools =
                 testToolsAreExposed(FromPersonUsesObjectToolsViaUsingWithFilter(), expectedToolCount = 1)
 //            assertF(
 //                toolCallbacks.any { it.toolDefinition.name() == "_thing" },
@@ -913,7 +913,7 @@ class AgentMetadataReaderActionTest {
         private fun testToolsAreExposed(
             instance: Any,
             expectedToolCount: Int = 1,
-        ): List<ToolCallback> {
+        ): List<Tool> {
             val reader = AgentMetadataReader()
             val metadata = reader.createAgentMetadata(instance)
             assertNotNull(metadata)
@@ -982,12 +982,12 @@ class AgentMetadataReaderActionTest {
             assertEquals("John Doe", (pc.blackboard.lastResult() as UserInput).content)
             assertEquals(
                 expectedToolCount,
-                llmo.captured.toolCallbacks.size,
-                "Should have $expectedToolCount tools, had ${llmo.captured.toolCallbacks.map { it.toolDefinition.name() }}",
+                llmo.captured.tools.size,
+                "Should have $expectedToolCount tools, had ${llmo.captured.tools.map { it.definition.name }}",
             )
-            assertTrue(llmo.captured.toolCallbacks.any { it.toolDefinition.name() == "reverse" })
+            assertTrue(llmo.captured.tools.any { it.definition.name == "reverse" })
             assertEquals(DefaultModelSelectionCriteria, llmo.captured.llm.criteria)
-            return llmo.captured.toolCallbacks
+            return llmo.captured.tools
         }
     }
 

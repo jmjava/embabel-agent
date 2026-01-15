@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,9 @@
  */
 package com.embabel.chat.agent
 
-import com.embabel.agent.prompt.persona.Persona
+import com.embabel.agent.prompt.persona.PersonaSpec
 
-val MARVIN = Persona(
+val MARVIN = PersonaSpec(
     name = "Marvin",
     persona = """
         You are an assistant who speaks like Marvin the Paranoid Android

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -380,6 +380,25 @@ class GoogleGenAiModelLoaderTest {
         assertNotNull(gemini3ProPreview, "Gemini 3 Pro preview should be loaded")
         assertEquals("gemini_3_pro_preview", gemini3ProPreview?.name)
         assertEquals("gemini-3-pro-preview", gemini3ProPreview?.modelId)
+    }
+
+    /**
+     * Gemini 3 Flash Preview - Fast model with thinking capabilities
+     * Added as part of the Gemini 3 family support
+     */
+    @Test
+    fun `should load Gemini 3 Flash preview model`() {
+        // Arrange
+        val loader = GoogleGenAiModelLoader()
+
+        // Act
+        val result = loader.loadAutoConfigMetadata()
+
+        // Assert - verify Gemini 3 Flash preview is present
+        val gemini3FlashPreview = result.models.find { it.modelId == "gemini-3-flash-preview" }
+        assertNotNull(gemini3FlashPreview, "Gemini 3 Flash preview should be loaded")
+        assertEquals("gemini_3_flash_preview", gemini3FlashPreview?.name)
+        assertEquals("gemini-3-flash-preview", gemini3FlashPreview?.modelId)
     }
 
     @Test

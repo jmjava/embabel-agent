@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,6 +50,16 @@ data class ToolObject(
         filter = { true },
     )
 
+    /**
+     * Add a prefix to the tool object's method names.
+     */
+    fun withPrefix(
+        prefix: String,
+    ): ToolObject = withNamingStrategy { "$prefix$it" }
+
+    /**
+     * Add a naming strategy to the tool object's method names.
+     */
     fun withNamingStrategy(
         namingStrategy: StringTransformer,
     ): ToolObject = copy(namingStrategy = namingStrategy)

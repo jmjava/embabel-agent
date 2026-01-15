@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,7 @@
 package com.embabel.agent.core
 
 import com.fasterxml.jackson.annotation.JsonClassDescription
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertNotNull
-import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
 class JvmTypeTest {
@@ -36,7 +33,8 @@ class JvmTypeTest {
     fun `should default description`() {
         val type = JvmType(Dog::class.java)
         assertEquals(Dog::class.java.name, type.name)
-        assertEquals(Dog::class.java.name, type.description)
+        assertEquals(Dog::class.java.simpleName, type.description)
+        assertEquals(Dog::class.java.simpleName, type.ownLabel)
     }
 
     @Test
@@ -59,8 +57,8 @@ class JvmTypeTest {
         val type = JvmType(Dog::class.java)
         val nameProperty = type.ownProperties[0]
         assertEquals("name", nameProperty.name)
-        assert(nameProperty is SimplePropertyDefinition)
-        assertEquals("String", (nameProperty as SimplePropertyDefinition).type)
+        assert(nameProperty is ValuePropertyDefinition)
+        assertEquals("String", (nameProperty as ValuePropertyDefinition).type)
     }
 
     class Owner(
@@ -75,7 +73,7 @@ class JvmTypeTest {
 
         val nameProperty = type.ownProperties[0]
         assertEquals("name", nameProperty.name)
-        assert(nameProperty is SimplePropertyDefinition)
+        assert(nameProperty is ValuePropertyDefinition)
 
         val dogProperty = type.ownProperties[1]
         assertEquals("dog", dogProperty.name)
@@ -99,11 +97,11 @@ class JvmTypeTest {
 
         val nameProperty = type.ownProperties[0]
         assertEquals("name", nameProperty.name)
-        assert(nameProperty is SimplePropertyDefinition)
+        assert(nameProperty is ValuePropertyDefinition)
 
         val capacityProperty = type.ownProperties[1]
         assertEquals("capacity", capacityProperty.name)
-        assert(capacityProperty is SimplePropertyDefinition)
+        assert(capacityProperty is ValuePropertyDefinition)
 
         val dogsProperty = type.ownProperties[2]
         assertEquals("dogs", dogsProperty.name)
@@ -361,7 +359,7 @@ class JvmTypeTest {
         // Note: Spring's classpath scanner might not find all standard library classes
         // This is expected behavior as it's designed for application classes
         // Just verify the method doesn't throw exceptions
-        println("Found ${children.size} children of List: ${children.map { it.name }}")
+//        println("Found ${children.size} children of List: ${children.map { it.name }}")
     }
 
     @Test
@@ -390,5 +388,197 @@ class JvmTypeTest {
         val type = JvmType(String::class.java)
         assertEquals("String", type.ownLabel)
         assert(type.labels.contains("String"))
+    }
+
+    // Test classes for creationPermitted
+    class NoAnnotation
+
+    @CreationPermitted(true)
+    class CreationPermittedTrue
+
+    @CreationPermitted(false)
+    class CreationPermittedFalse
+
+    @Test
+    fun `creationPermitted should default to true when no annotation`() {
+        val type = JvmType(NoAnnotation::class.java)
+        assertTrue(type.creationPermitted, "Default should be true when no annotation")
+    }
+
+    @Test
+    fun `creationPermitted should return true when annotated with true`() {
+        val type = JvmType(CreationPermittedTrue::class.java)
+        assertTrue(type.creationPermitted, "Should return true when annotated with @CreationPermitted(true)")
+    }
+
+    @Test
+    fun `creationPermitted should return false when annotated with false`() {
+        val type = JvmType(CreationPermittedFalse::class.java)
+        assertFalse(type.creationPermitted, "Should return false when annotated with @CreationPermitted(false)")
+    }
+
+    // Test classes for @Semantics annotation
+    class Company(val name: String)
+
+    class Employee(
+        val name: String,
+
+        @field:Semantics([
+            With("predicate", "works at"),
+            With("inverse", "employs"),
+        ])
+        val worksAt: Company,
+    )
+
+    class EmployeeWithAliases(
+        val name: String,
+
+        @field:Semantics([
+            With("predicate", "works at"),
+            With("inverse", "employs"),
+            With("aliases", "is employed by, works for"),
+        ])
+        val worksAt: Company,
+    )
+
+    class PersonWithoutSemantics(
+        val name: String,
+        val friend: Dog,
+    )
+
+    class PersonWithValueSemantics(
+        @field:Semantics([
+            With("format", "email"),
+            With("validation", "required"),
+        ])
+        val email: String,
+    )
+
+    class KennelWithCollectionSemantics(
+        val name: String,
+
+        @field:Semantics([
+            With("predicate", "houses"),
+            With("inverse", "lives in"),
+        ])
+        val dogs: List<Dog>,
+    )
+
+    @Test
+    fun `property without Semantics annotation has empty metadata`() {
+        val type = JvmType(PersonWithoutSemantics::class.java)
+        val friendProperty = type.ownProperties.find { it.name == "friend" }
+        assertNotNull(friendProperty)
+        assertTrue(friendProperty!!.metadata.isEmpty(), "Metadata should be empty when no @Semantics annotation")
+    }
+
+    @Test
+    fun `property with Semantics annotation has correct metadata`() {
+        val type = JvmType(Employee::class.java)
+        val worksAtProperty = type.ownProperties.find { it.name == "worksAt" }
+
+        assertNotNull(worksAtProperty)
+        assertEquals(2, worksAtProperty!!.metadata.size)
+        assertEquals("works at", worksAtProperty.metadata["predicate"])
+        assertEquals("employs", worksAtProperty.metadata["inverse"])
+    }
+
+    @Test
+    fun `multiple With entries are all captured`() {
+        val type = JvmType(EmployeeWithAliases::class.java)
+        val worksAtProperty = type.ownProperties.find { it.name == "worksAt" }
+
+        assertNotNull(worksAtProperty)
+        assertEquals(3, worksAtProperty!!.metadata.size)
+        assertEquals("works at", worksAtProperty.metadata["predicate"])
+        assertEquals("employs", worksAtProperty.metadata["inverse"])
+        assertEquals("is employed by, works for", worksAtProperty.metadata["aliases"])
+    }
+
+    @Test
+    fun `Semantics on domain type property is captured`() {
+        val type = JvmType(Employee::class.java)
+        val worksAtProperty = type.ownProperties.find { it.name == "worksAt" }
+
+        assertNotNull(worksAtProperty)
+        assertTrue(worksAtProperty is DomainTypePropertyDefinition)
+        assertEquals("works at", worksAtProperty!!.metadata["predicate"])
+    }
+
+    @Test
+    fun `Semantics on value property is captured`() {
+        val type = JvmType(PersonWithValueSemantics::class.java)
+        val emailProperty = type.ownProperties.find { it.name == "email" }
+
+        assertNotNull(emailProperty)
+        assertTrue(emailProperty is ValuePropertyDefinition)
+        assertEquals(2, emailProperty!!.metadata.size)
+        assertEquals("email", emailProperty.metadata["format"])
+        assertEquals("required", emailProperty.metadata["validation"])
+    }
+
+    @Test
+    fun `Semantics on collection property is captured`() {
+        val type = JvmType(KennelWithCollectionSemantics::class.java)
+        val dogsProperty = type.ownProperties.find { it.name == "dogs" }
+
+        assertNotNull(dogsProperty)
+        assertTrue(dogsProperty is DomainTypePropertyDefinition)
+        assertEquals(Cardinality.LIST, dogsProperty!!.cardinality)
+        assertEquals(2, dogsProperty.metadata.size)
+        assertEquals("houses", dogsProperty.metadata["predicate"])
+        assertEquals("lives in", dogsProperty.metadata["inverse"])
+    }
+
+    class PersonWithEmptySemantics(
+        @field:Semantics([])
+        val name: String,
+    )
+
+    @Test
+    fun `empty Semantics annotation results in empty metadata`() {
+        val type = JvmType(PersonWithEmptySemantics::class.java)
+        val nameProperty = type.ownProperties.find { it.name == "name" }
+
+        assertNotNull(nameProperty)
+        assertTrue(nameProperty!!.metadata.isEmpty())
+    }
+
+    class PersonWithDefaultSemantics(
+        @field:Semantics
+        val name: String,
+    )
+
+    @Test
+    fun `Semantics annotation with no value array results in empty metadata`() {
+        val type = JvmType(PersonWithDefaultSemantics::class.java)
+        val nameProperty = type.ownProperties.find { it.name == "name" }
+
+        assertNotNull(nameProperty)
+        assertTrue(nameProperty!!.metadata.isEmpty())
+    }
+
+    class MixedPerson(
+        val name: String,
+
+        @field:Semantics([With("predicate", "befriends")])
+        val friend: Dog,
+
+        val age: Int,
+    )
+
+    @Test
+    fun `mixed properties with and without Semantics`() {
+        val type = JvmType(MixedPerson::class.java)
+
+        val nameProperty = type.ownProperties.find { it.name == "name" }
+        assertTrue(nameProperty!!.metadata.isEmpty())
+
+        val friendProperty = type.ownProperties.find { it.name == "friend" }
+        assertEquals(1, friendProperty!!.metadata.size)
+        assertEquals("befriends", friendProperty.metadata["predicate"])
+
+        val ageProperty = type.ownProperties.find { it.name == "age" }
+        assertTrue(ageProperty!!.metadata.isEmpty())
     }
 }

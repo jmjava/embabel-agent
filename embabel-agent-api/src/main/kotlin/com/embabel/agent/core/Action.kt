@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ interface Action : DataFlowStep, ConditionAction, ActionRunner, DataDictionary, 
         var type = DynamicType(name = binding.type)
         for (prop in action.referencedInputProperties(binding.name)) {
             loggerFor<Action>().debug("Discovered property {}", prop)
-            type = type.withProperty(SimplePropertyDefinition(name = prop))
+            type = type.withProperty(ValuePropertyDefinition(name = prop))
         }
         loggerFor<Action>().debug(
             "Action {} references variable {} of type {}: {}",

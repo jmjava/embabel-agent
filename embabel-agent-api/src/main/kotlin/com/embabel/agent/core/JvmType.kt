@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,10 @@ import org.slf4j.LoggerFactory
 
 /**
  * Typed backed by a JVM object
+ * It's good practice to annotate classes with @JsonClassDescription for better descriptions:
+ * otherwise, only the simple class name will be used.
+ * Use the @CreationPermitted annotation to indicate whether new instances of this type can be created.
+ * Default is true.
  */
 data class JvmType @JsonCreator constructor(
     @param:JsonProperty("className")
@@ -37,7 +41,7 @@ data class JvmType @JsonCreator constructor(
     override val creationPermitted: Boolean
         get() {
             val cpa = clazz.getAnnotation(CreationPermitted::class.java)
-            return cpa != null
+            return cpa?.value ?: true
         }
 
     @get:JsonIgnore
@@ -75,7 +79,7 @@ data class JvmType @JsonCreator constructor(
             return if (ann != null) {
                 "${clazz.simpleName}: ${ann.value}"
             } else {
-                clazz.name
+                clazz.simpleName
             }
         }
 
@@ -140,6 +144,8 @@ data class JvmType @JsonCreator constructor(
     override val ownProperties: List<PropertyDefinition>
         get() {
             return clazz.declaredFields.mapNotNull { field ->
+                val metadata = extractSemantics(field)
+
                 // Check if it's a collection with a generic type parameter
                 if (Collection::class.java.isAssignableFrom(field.type) && field.genericType is java.lang.reflect.ParameterizedType) {
                     val parameterizedType = field.genericType as java.lang.reflect.ParameterizedType
@@ -153,26 +159,38 @@ data class JvmType @JsonCreator constructor(
                             name = field.name,
                             type = JvmType(typeArg),
                             cardinality = cardinality,
+                            metadata = metadata,
                         )
                     }
                     // Collection of scalars - return simple property
-                    return@mapNotNull SimplePropertyDefinition(
+                    return@mapNotNull ValuePropertyDefinition(
                         name = field.name,
                         type = field.type.simpleName,
+                        metadata = metadata,
                     )
                 } else if (shouldNestAsEntity(field.type)) {
                     DomainTypePropertyDefinition(
                         name = field.name,
                         type = JvmType(field.type),
+                        metadata = metadata,
                     )
                 } else {
-                    SimplePropertyDefinition(
+                    ValuePropertyDefinition(
                         name = field.name,
                         type = field.type.simpleName,
+                        metadata = metadata,
                     )
                 }
             }
         }
+
+    /**
+     * Extract semantic metadata from a field's @Semantics annotation.
+     */
+    private fun extractSemantics(field: java.lang.reflect.Field): Map<String, String> {
+        val semantics = field.getAnnotation(Semantics::class.java) ?: return emptyMap()
+        return semantics.value.associate { it.key to it.value }
+    }
 
     private fun shouldNestAsEntity(type: Class<*>): Boolean {
         // Primitives and their wrappers are scalars

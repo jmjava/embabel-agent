@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 Embabel Software, Inc.
+ * Copyright 2024-2026 Embabel Pty Ltd.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -82,7 +82,7 @@ class MontyPythonLoggingAgenticEventListener : LoggingAgenticEventListener(
         "Bring out your dead! Object added: ${if (e.agentProcess.processContext.processOptions.verbosity.debug) e.value else e.value::class.java.simpleName} to process ${e.processId}"
 
     override fun getLlmRequestEventMessage(e: LlmRequestEvent<*>): String =
-        "[${e.processId}] (${e.interaction.id.value}) Strange women lying in ponds: Using LLM ${e.llm.name}: ${e.outputClass.simpleName} -> ${e.interaction.llm}"
+        "[${e.processId}] (${e.interaction.id.value}) Strange women lying in ponds: Using LLM ${e.llmMetadata.name}: ${e.outputClass.simpleName} -> ${e.interaction.llm}"
 
     override fun getActionExecutionStartMessage(e: ActionExecutionStartEvent): String =
         "[${e.processId}] Run away! Run away! executing action ${e.action.name}"
